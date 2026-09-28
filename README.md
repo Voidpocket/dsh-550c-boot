@@ -4,12 +4,12 @@
 
 **完整模式**（16 秒：logo → 基站接管 → 47 节点逐点覆写 → `SYSTEM IS REWRITTEN`）：
 
-![完整模式](https://raw.githubusercontent.com/yannicksong0106/dsh-550c-boot/main/docs/preview-full.png)
+![完整模式](docs/preview-full.png)
 
 **简易模式**（4 秒 logo 书写）与**青磷光配色**：
 
-![简易模式](https://raw.githubusercontent.com/yannicksong0106/dsh-550c-boot/main/docs/preview-simple.png)
-![青配色](https://raw.githubusercontent.com/yannicksong0106/dsh-550c-boot/main/docs/preview-cyan.png)
+![简易模式](docs/preview-simple.png)
+![青配色](docs/preview-cyan.png)
 
 - **简易模式**（默认）：只播开头的 550C logo 书写加载动画，约 4 秒
 - **完整模式**：播完整的覆写流程 —— logo → 基站接管终端 → 47 节点逐点覆写 → `SYSTEM IS REWRITTEN`，约 15 秒
