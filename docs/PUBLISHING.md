@@ -1,5 +1,14 @@
 # 发布 / 收录清单
 
+**当前状态（2026-09-28）**：仓库已公开并推上 GitHub（`yannicksong0106/dsh-550c-boot`，topic 含
+`dsh-plugin`），CI 全绿；v2 投稿 Issue 已开：
+[omdsh-dev/dsh-hub-workshop#169](https://github.com/omdsh-dev/dsh-hub-workshop/issues/169)
+（钉 `ed86fb0e…`）。Hub 的 bot 回了"预检未通过"，但**失败点在它们仓库侧**——`prepare-issue-intake.mjs`
+（单份投稿预检）通过，挂在 `npm run validate` 的 `check-public-site.mjs:138`；且该工作流最近 15 次运行
+（含定时运行与 9 月其它投稿）**0 成功**，其 #172 运行标题即
+`intake: profile-bundle submissions cannot pass preflight`。等上游流水线恢复后重跑即可：编辑一下
+Issue 正文（或留一条评论）就会重新触发 `intake` 工作流，无需改动本仓库的清单与固定 commit。
+
 本仓库的目标是同时满足两条分发路径：
 
 | 路径 | 谁在用 | 需要什么 |
