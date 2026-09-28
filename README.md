@@ -1,5 +1,15 @@
 # dsh-550c-boot
 
+[![Stars](https://img.shields.io/github/stars/yannicksong0106/dsh-550c-boot?style=flat-square&logo=github&label=Stars)](https://github.com/yannicksong0106/dsh-550c-boot/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/yannicksong0106/dsh-550c-boot/total?style=flat-square&label=Downloads)](https://github.com/yannicksong0106/dsh-550c-boot/releases)
+[![Last commit](https://img.shields.io/github/last-commit/yannicksong0106/dsh-550c-boot?style=flat-square)](https://github.com/yannicksong0106/dsh-550c-boot/commits/main)
+[![License](https://img.shields.io/github/license/yannicksong0106/dsh-550c-boot?style=flat-square)](LICENSE)
+[![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![Visitors](https://visitor-badge.laobi.icu/badge?page_id=yannicksong0106.dsh-550c-boot)](https://github.com/yannicksong0106/dsh-550c-boot)
+
+> Stars / Downloads 是 shields.io 的实时徽章（Downloads 统计 Release 附件下载量），Visitors 是第三方访客计数器 ——
+> 都是外部图片，加载不出来不影响 README 本身，删掉对应那一行即可。
+
 给 DSH 加一段 **550C 开机动画**：每次启动客户端时，全屏播放 550C 片头，播完渐出，露出真正的 DSH 界面。
 
 **完整模式**（16 秒：logo → 基站接管 → 47 节点逐点覆写 → `SYSTEM IS REWRITTEN`）：
@@ -32,6 +42,12 @@ dsh plugin --profile web add <本目录绝对路径>
 
 ```sh
 dsh plugin --profile web add github:yannicksong0106/dsh-550c-boot
+```
+
+或用**预构建 tarball**（Release 附件，市场/商店用它的就是这条；附件名不带版本号，所以 `latest` 链接不会随发版失效）：
+
+```sh
+dsh plugin --profile web add https://github.com/yannicksong0106/dsh-550c-boot/releases/latest/download/dsh-550c-boot.tgz
 ```
 
 装完**必须重启一次 DSH**：bundle 层是在启动时装配的。
