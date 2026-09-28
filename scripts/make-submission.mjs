@@ -116,7 +116,11 @@ const submission = {
       `${slug}#${ref}` +
       '\n装完重启一次 DSH（bundle 层在启动时装配）；升级后在新窗口 Ctrl+Shift+R 硬刷新。' +
       '\n模式开关在 设置 → 通用 → 550C 开机动画。',
-    source: repository,
+    // Null for this route on purpose: the submission schema only carries a
+    // `source` coordinate for `repository-plugin` (github:owner/repo), and
+    // rejects a non-null one for a `profile-bundle`. The pinned coordinate for
+    // this submission lives in release.profileBundle.spec instead.
+    source: null,
   },
   declarations: {
     permissions:
