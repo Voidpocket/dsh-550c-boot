@@ -46,16 +46,27 @@ gh repo edit yannicksong0106/dsh-550c-boot \
 [Author Studio](https://hub.omdsh.dev/publish.html) 手填）：
 
 1. 把这一轮的工作**先 commit + push**（投稿必须钉在公开远端已有的完整 40 位 commit 上）。
-2. 生成 `omdsh-workshop-submission/v2` 清单，关键字段：
-   - `packageManifest` 必须与该 commit 里 `package.json#dshWorkshop` **逐值一致**
-   - `release.ref` = 完整 40 位 commit；`operation` = `create-project`；`project.path` = `null`
-   - `management.method` = `profile-bundle`，`protocol` = `harness-profile`
-   - `installScriptsMustRemainDisabled` = `true`
+2. 生成 `omdsh-workshop-submission/v2` 清单 —— 用仓库自带的生成器，事实全部读自工作树，
+   不靠手抄（工作树脏了它会拒绝运行：未提交的改动不该进入投稿事实）：
+
+   ```sh
+   node scripts/make-submission.mjs --out "$TEMP/submission.json"   # 也可直接打到 stdout
+   ```
+
+   它填的关键字段：`packageManifest` 逐字取自 `package.json#dshWorkshop`；`release.ref` = `git rev-parse HEAD`
+   （完整 40 位）；`management.method` = `profile-bundle`，`protocol` = `harness-profile`；
+   `release.profileBundle.spec` = `github:<owner>/<repo>#<commit>`（走 npm 发版就把它换成裸版本号）；
+   `declarations.installScriptsMustRemainDisabled` = `true`。
 3. 本地校验（只读，不执行投稿仓库代码）：
 
    ```sh
+   # 官方校验器（权威）
    git clone --depth 1 https://github.com/omdsh-dev/dsh-hub-workshop /tmp/dsh-hub-workshop
    node /tmp/dsh-hub-workshop/scripts/intake.mjs validate /tmp/submission.json
+
+   # 脚手架里的 schema 校验（快，离线可重复；用的是 Hub 的 submission.schema.json）
+   node .verify/validate-json.mjs package-manifest.schema.json ../package.json#dshWorkshop
+   node .verify/validate-json.mjs submission.schema.json "$TEMP/submission.json"
    ```
 
 4. 校验通过后，在 `omdsh-dev/dsh-hub-workshop` 开一个 Issue：
