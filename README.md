@@ -1,5 +1,7 @@
 # dsh-550c-boot
 
+[中文](README.md) | [English](README.en.md)
+
 [![Stars](https://img.shields.io/github/stars/yannicksong0106/dsh-550c-boot?style=flat-square&logo=github&label=Stars)](https://github.com/yannicksong0106/dsh-550c-boot/stargazers)
 [![Downloads](https://img.shields.io/github/downloads/yannicksong0106/dsh-550c-boot/total?style=flat-square&label=Downloads)](https://github.com/yannicksong0106/dsh-550c-boot/releases)
 [![Last commit](https://img.shields.io/github/last-commit/yannicksong0106/dsh-550c-boot?style=flat-square)](https://github.com/yannicksong0106/dsh-550c-boot/commits/main)

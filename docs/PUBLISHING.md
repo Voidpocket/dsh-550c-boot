@@ -14,8 +14,18 @@ Issue 正文（或留一条评论）就会重新触发 `intake` 工作流，无�
 | 路径 | 谁在用 | 需要什么 |
 |---|---|---|
 | **GitHub 直装** | `dsh plugin --profile <p> add github:yannicksong0106/dsh-550c-boot` | 公开仓库 + 提交好的构建产物（`lib/`），无需构建授权 |
+| **awesome-dsh-plugin**（[awesome-dsh-plugin.com](https://awesome-dsh-plugin.com)） | 社区精选列表 / 站点 | PR 加一个文件 `data/plugins/<owner>__<repo>.yml`；门槛：`dsh.bundle` + `dsh-plugin` topic + **仓库满 1 天**（CI 自动查） |
+| **dsh-market 社区索引**（[dsh-market.com](https://dsh-market.com)） | 创意工坊商店 | PR 往 `zhu1090093659/dsh-community-plugins` 的 `community.json` 追加一条 |
 | **OMDSH Hub（hub.omdsh.dev）插件区域** | 应用内插件市场 / 索引站 | `package.json#dshWorkshop`（`omdsh-workshop-package/v1`）+ 固定 40 位 commit 的 v2 投稿 Issue |
 | **npm**（可选，但市场按包名安装需要） | `dsh plugin --profile <p> add dsh-550c-boot` | `npm publish`（`publishConfig.access: public` 已就位） |
+
+## awesome-dsh-plugin 的投稿文件
+
+投稿文件**跟代码放在一起**（`submission/data/plugins/yannicksong0106__dsh-550c-boot.yml`），
+这样它随仓库版本化，不会和实际能力脱节；提 PR 时把它复制到列表仓的同名路径即可。
+entry 允许的键只有 `url` / `name` / `category` / `description` / `tarball` / `file`——
+**`npm` 不许写**（列表自己从仓库解析 npm 包名），`tarball` 必须是 GitHub Release 上的 `.tgz`。
+
 
 > README 里的文档链接是**仓库相对路径**（GitHub 优先，marketplace 也直接渲染 GitHub 的 README）。
 > 将来真要发 npm，得把这些链接换成绝对 URL —— npmjs 不提供仓库文件，相对链接在那里会 404。
