@@ -26,6 +26,11 @@ Issue 正文（或留一条评论）就会重新触发 `intake` 工作流，无�
 entry 允许的键只有 `url` / `name` / `category` / `description` / `tarball` / `file`——
 **`npm` 不许写**（列表自己从仓库解析 npm 包名），`tarball` 必须是 GitHub Release 上的 `.tgz`。
 
+截图**放在自己仓库**：`screenshots.json`（`package.json` 旁边，1–8 张，相对路径，不能含 `..`）。
+市场（如 dsh-market 详情页）按它展示；不声明也能用（市场会从 README 抽图），声明只是为了控制顺序与选图。
+好处是以后换图推自己的仓库即可，不用再提 PR。官方推荐把 `@deepseek-ai/*` 声明成 `peerDependencies`
+而不是 `dependencies`（避免 profile 里出现重复运行时）——本项目零运行时依赖，天然满足。
+
 
 > README 里的文档链接是**仓库相对路径**（GitHub 优先，marketplace 也直接渲染 GitHub 的 README）。
 > 将来真要发 npm，得把这些链接换成绝对 URL —— npmjs 不提供仓库文件，相对链接在那里会 404。
