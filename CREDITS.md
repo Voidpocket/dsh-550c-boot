@@ -8,7 +8,7 @@
 配色（琥珀 CRT 阶梯）、面板布局、时间线节奏都出自这份原稿。
 
 - 原稿：`assets/550C-source.html`（归档，构建的输入）
-- 改写清单与理由：见 [README](README.md#工程结构) 的表格
+- 改写清单与理由：见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 的表格
 
 > 若版权方希望采用不同的署名方式或许可条款，开个 issue 说明即可，这里按你的意思改。
 

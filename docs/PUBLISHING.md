@@ -17,6 +17,9 @@ Issue 正文（或留一条评论）就会重新触发 `intake` 工作流，无�
 | **OMDSH Hub（hub.omdsh.dev）插件区域** | 应用内插件市场 / 索引站 | `package.json#dshWorkshop`（`omdsh-workshop-package/v1`）+ 固定 40 位 commit 的 v2 投稿 Issue |
 | **npm**（可选，但市场按包名安装需要） | `dsh plugin --profile <p> add dsh-550c-boot` | `npm publish`（`publishConfig.access: public` 已就位） |
 
+> README 里的文档链接是**仓库相对路径**（GitHub 优先，marketplace 也直接渲染 GitHub 的 README）。
+> 将来真要发 npm，得把这些链接换成绝对 URL —— npmjs 不提供仓库文件，相对链接在那里会 404。
+
 > 事实来源：`omdsh-dev/dsh-hub-workshop` 的 `INTAKE.zh.md`、`agent-submission-prompt.zh.md`、
 > `package-manifest.schema.json`、`official-baseline.json`。收集于 2026-09（官方基线
 > `@deepseek-ai/dsh@0.1.0-rc.6`，Registry `entries` 当时为空 —— 还没有项目拿到安装授权）。
