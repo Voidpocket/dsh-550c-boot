@@ -193,6 +193,25 @@ Windows 上桌面壳给 Electron 的是 `titleBarStyle:'hidden'` + `titleBarOver
   token 指向本配色（简易档是底色、完整档是 HUD 顶色，符号色是琥珀）的样式表，OS 画的那条就跟着
   变成终端自己的颜色；卸载时移除，主题自动还原。
 
+### macOS：不吞掉窗口拖拽
+
+官方基础样式表把**每个 body 直接子元素**都算成 `-webkit-app-region: no-drag`（选择器只放过应用
+自己的根元素），于是铺满视口的 body 级元素会**把整扇窗口从 macOS 可拖拽区域里减掉**：片头在放的
+时候，标题栏拖不动、双击缩放也失效。`pointer-events: none` 不豁免这件事，只有元素自己声明才行。
+
+所以遮罩挂载时同时做两件事：
+
+- 宿主元素带 `data-dsh-boot-splash` —— 这是 `dsh-web` 全家桶（`dsh-web-all`）专门豁免的三个标记之一；
+- 自己往 `<head>` 塞一张 `html[data-platform="darwin"] body>.dsh550c-host{-webkit-app-region:initial !important}`
+  —— 没装全家桶的纯 DSH 靠这一条。
+
+`initial` 是初始值（`none`），作用是让元素**退出** app-region 计算，而不是把整块遮罩变成拖拽把手，
+所以点击跳过照旧有效；`!important` 是必需的，官方那条选择器权重更高。看得到的区别：加了这条，
+遮罩的 computed `-webkit-app-region` 是 `none`，官方 `[data-window-drag]` 标题栏行保持 `drag`；
+去掉它，遮罩变成 `no-drag`（就是被吃掉的 bug）。`.verify/run-harness.mjs` 的
+`darwin · window drag guard` 用例把这四个值都断言了。顶部 40px 条带在这段时间归窗口拖动，
+点击跳过请点别处或按 Esc。
+
 ## 已知限制
 
 - 只在 **Web UI 加载之后**覆盖全屏，做不到早于 Electron 窗口首帧（窗口本身还会有一瞬间的空白）。
@@ -200,6 +219,11 @@ Windows 上桌面壳给 Electron 的是 `titleBarStyle:'hidden'` + `titleBarOver
 - 桌面窗口的原生按钮仍在，只是被改成同一套配色；真要去掉得改桌面壳（`titleBarOverlay` 关了就没有）。
 - 每次客户端加载都会播（刷新页面也算）。想要「每个会话只播一次」需要另加去重，目前故意不做。
 - 偏好存在浏览器 `localStorage`（键 `dsh-550c-boot:mode`），不是 DSH 设置文档——和已装的第三方设置行做法一致。
+- **`dsh.engines.dsh` 声明的是 `>=0.2.0-rc.1`，这是有意的**：宿主半边依赖
+  `webserver/index-inject` 的行渲染行为，我只在 `0.2.0-rc.1` 上实测过，不打算声明没验过的下限。
+  在更低的宿主（例如 `0.1.7-rc.2`）上安装能过，但之后的应用内更新会被以 412 拒掉；如果你需要
+  `0.1.7` 支持，说一声，我把它降到 `>=0.1.7-rc.1` 并在那个宿主上补一轮实测。
+
 
 ## 开发
 
@@ -220,7 +244,7 @@ node --check lib/index.js  # 宿主半边是手写的，同样要过一遍
 ```sh
 node .verify/build-harness.mjs                      # 收集行 + 渲染 harness 页
 node .verify/serve.mjs 3499                         # 静态服务器（后台）
-node .verify/run-harness.mjs 3499                   # 跑四组探针 + 四张截图
+node .verify/run-harness.mjs 3499                   # 跑六组探针 + 四张截图（含 darwin 拖拽守卫）
 ```
 
 | 断言 | 结果 |
@@ -231,6 +255,7 @@ node .verify/run-harness.mjs 3499                   # 跑四组探针 + 四张�
 | 配色随档位/方案 | 简易 `#050403`、完整 `#141008`，符号色 `#e8a020` |
 | 预留规则存在、浏览器里塌成 0 | true / `padding-right: 0px` |
 | 关闭档 | 不作画、不挂载、不定义握手全局 |
+| macOS 拖拽守卫（`data-platform=darwin`） | 宿主带 `data-dsh-boot-splash`；computed `-webkit-app-region`：有守卫 `none`、抽掉守卫 `no-drag`（对照）、插回 `none`；官方 `[data-window-drag]` 行仍为 `drag`；点击后遮罩正常卸载 |
 
 截图在 `.verify/shots/`：同样的页面，**有行**时是纯黑首帧，**抽掉行**时 HARNESS 卡片就在那儿。
 

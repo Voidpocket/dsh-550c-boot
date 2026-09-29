@@ -37,6 +37,8 @@ const ROW_STYLE_ID = 'dsh-550c-boot-row-style'
 const FIRST_FRAME_GLOBAL = '__dsh550cFirstFrame'
 /** The host-document sheet that repaints the Desktop window's caption buttons. */
 const CAPTION_STYLE_ID = 'dsh-550c-boot-caption'
+/** The host-document sheet that keeps the overlay out of the macOS drag region. */
+const DRAG_GUARD_STYLE_ID = 'dsh-550c-boot-drag-guard'
 
 /** The one live splash; the boot trigger and the preview button share it. */
 let liveOverlay = null
@@ -107,6 +109,37 @@ function ensureRowStyle() {
   const style = document.createElement('style')
   style.id = ROW_STYLE_ID
   style.textContent = ROW_CSS
+  document.head.appendChild(style)
+}
+
+/**
+ * macOS window-drag guard.
+ *
+ * DSH's official base stylesheet turns every DIRECT body child into a
+ * `-webkit-app-region: no-drag` region — its selector spares only the app's own
+ * root element. A body-level element that spans the viewport therefore subtracts
+ * the whole window from the macOS draggable region: while the splash is up the
+ * window cannot be dragged by its title area, and macOS no longer runs the
+ * system double-click action (zoom) there. `pointer-events: none` does not exempt
+ * an element from that computation; only a declaration of its own does.
+ *
+ * `data-dsh-boot-splash` is the marker the dsh-web family bundle exempts
+ * (packages/dsh-web-all/src/client/index.ts), so carrying it is what keeps this
+ * plugin a good citizen there; this sheet is the same declaration for installs
+ * that ship no such bundle. `initial` is the initial value (`none`), which takes
+ * the element out of the app-region computation instead of turning the whole
+ * overlay into a drag handle — click-to-skip keeps working. `!important` is
+ * required because the official selector outranks this one.
+ */
+const DRAG_GUARD_CSS = `
+html[data-platform="darwin"] body>.dsh550c-host{-webkit-app-region:initial !important}
+`
+
+function ensureDragGuard() {
+  if (document.getElementById(DRAG_GUARD_STYLE_ID) !== null) return
+  const style = document.createElement('style')
+  style.id = DRAG_GUARD_STYLE_ID
+  style.textContent = DRAG_GUARD_CSS
   document.head.appendChild(style)
 }
 
@@ -223,6 +256,11 @@ function mountOverlay(force) {
 
   const host = document.createElement('div')
   host.className = 'dsh550c-host'
+  // Body-level overlays are subtracted from the macOS draggable region unless
+  // they declare otherwise: the marker is what the dsh-web family bundle
+  // exempts, ensureDragGuard() is the same exemption for installs without it.
+  host.dataset.dshBootSplash = ''
+  ensureDragGuard()
   // The scheme is applied as data on the host, which is what the stylesheet's
   // :host([data-scheme=…]) blocks key on. Amber sets nothing on purpose.
   const scheme = readScheme()
