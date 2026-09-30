@@ -221,6 +221,36 @@ function adaptCaption(host) {
   const darwin = platform === 'darwin'
   host.dataset.caption = darwin ? 'darwin' : 'windows'
 
+  // Mirror the shell's fullscreen flag onto the host, and keep it in sync: the
+  // HUD's caption reservation has to collapse in fullscreen, because macOS hides
+  // the traffic lights there and Windows hides the overlay buttons. The preload
+  // writes html[data-fullscreen] for both platforms (desktop main process ->
+  // dsh-desktop:window-fullscreen -> root.dataset.fullscreen), so watching that
+  // one attribute is enough — and it also covers the user entering fullscreen
+  // while the splash is on screen.
+  const mirrorFullscreen = () => {
+    if (document.documentElement.dataset.fullscreen === 'true') host.dataset.fullscreen = ''
+    else delete host.dataset.fullscreen
+  }
+  mirrorFullscreen()
+  const fullscreenObserver = new MutationObserver(mirrorFullscreen)
+  fullscreenObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-fullscreen'],
+  })
+
+  const dispose = () => {
+    fullscreenObserver.disconnect()
+    delete host.dataset.caption
+    delete host.dataset.fullscreen
+  }
+
+  // macOS has no titleBarOverlay at all (the shell's whole bundle contains zero
+  // `titlebar-area` hits): the preload's probe is never created there either,
+  // because syncWindowsAppearance() returns early off win32. So the reservation
+  // above is the entire darwin story — nothing to repaint, nothing to inject.
+  if (darwin) return dispose
+
   // The accent follows the scheme for free: `--caption-symbol` is a literal on
   // :host (see ENHANCE_CSS), and the host's computed style is the scheme's answer.
   const symbol = getComputedStyle(host).getPropertyValue('--caption-symbol').trim() || '#e8a020'
@@ -236,7 +266,7 @@ function adaptCaption(host) {
 
   return () => {
     style.remove()
-    delete host.dataset.caption
+    dispose()
   }
 }
 

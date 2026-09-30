@@ -166,18 +166,27 @@ const ENHANCE_CSS = `
 
      footprint  the strip is reserved inside #hud-top, so the HUD's own
                 TIME / ● REC are not shoved under the buttons;
-     palette    the two caption tokens above are pushed (by client.js) into the
-                exact DSH tokens the Desktop preload measures and forwards to
-                setTitleBarOverlay, so the OS repaints the strip in this
-                splash's colours.
+     strip      client.js points the Desktop preload's probe element at a
+                transparent background, so the OS-drawn strip lets the animation
+                show through instead of sitting on an opaque bar.
 
-   env(titlebar-area-width) IS Chromium's reported strip geometry (~138px of
-   Windows caption buttons at 100%); where the overlay is absent the fallback
-   collapses the reservation to zero. A browser tab never sets data-caption at
-   all: its window buttons live outside the viewport. */
+   Windows geometry comes from env(titlebar-area-width) — Chromium's reported
+   strip width (~138px at 100%) — and collapses to zero where the overlay is
+   absent. macOS has NO titleBarOverlay (the whole shell contains zero
+   "titlebar-area" hits), so the traffic lights have to be cleared with the
+   shell's own numbers: trafficLightPosition is {x:16,y:18} and the shell's own
+   darwin chrome uses a 52px strip for them, so 16 + 52 + 8px of breathing room
+   = 76px. In fullscreen macOS hides the traffic lights (and Windows hides the
+   overlay buttons), which the preload reports as html[data-fullscreen]; the
+   reservation collapses then too, mirrored onto the host by client.js.
+
+   A browser tab never sets data-caption at all: its window buttons live outside
+   the viewport. */
 :host([data-mode="simple"]){--caption-fill:#050403}
 :host([data-caption="windows"]) #hud-top{padding-right:calc(100% - env(titlebar-area-width, 100%))}
-:host([data-caption="darwin"]) #hud-top{padding-left:86px}
+:host([data-caption="windows"][data-fullscreen]) #hud-top{padding-right:0}
+:host([data-caption="darwin"]) #hud-top{padding-left:76px}
+:host([data-caption="darwin"][data-fullscreen]) #hud-top{padding-left:0}
 `
 
 const pad2 = (value) => String(value).padStart(2, '0')
@@ -380,7 +389,19 @@ function enhanceShow(stage, options) {
     else if (cls.contains('uav')) deepenNode(el)
     else if (cls.contains('ll')) remapLogLine(el)
     else if (cls.contains('wp-row')) fixRow(el)
+    else if (el.id === 'hud-top') markWindowDrag(el)
     for (const child of el.children) decorate(child)
+  }
+
+  /* ── the HUD strip as window chrome ────────────────────────────────── */
+  // `data-window-drag` is the shell's own marker for a draggable chrome row:
+  // ui-web's base.css turns it into the single darwin drag rule, and a marked
+  // row's blank segments drag while its controls stay clickable. Marking the HUD
+  // strip therefore keeps the window draggable while the full-mode splash is up —
+  // otherwise the overlay covers the shell's own chrome row for the whole run.
+  function markWindowDrag(el) {
+    if (el.dataset.windowDrag !== undefined) return
+    el.dataset.windowDrag = ''
   }
 
   /* ── the ticking deadline ──────────────────────────────────────────── */

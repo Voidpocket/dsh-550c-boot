@@ -2,6 +2,20 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号用 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-09-30
+
+### 修复
+
+- **macOS 三处收尾**（此前只做了"不吞掉窗口拖拽"）：
+  - HUD 让位常量从拍脑袋的 `86px` 改成按 shell 自己数字推导的 **76px**（红绿灯 x=16 + shell 给它们
+    留的 52px 条宽 + 8px 呼吸位）；
+  - **全屏时让位塌成 0**：macOS 全屏收红绿灯、Windows 全屏收 overlay 按钮，preload 用
+    `html[data-fullscreen]` 报这件事；插件用 `MutationObserver` 盯这个属性并镜像到宿主元素，
+    所以片头正在放的时候切全屏也跟得上；
+  - **HUD 条带标 `data-window-drag`**：这是官方 base.css 认的标记（"被标记行的空白段可拖、
+    控件仍可点"），补上之后完整档片头期间窗口不再拖不动。
+- darwin 上不再注入标题栏换色样式表：preload 的探针元素只在 win32 创建，那边没有可改的条带。
+
 ## [0.1.3] - 2026-09-30
 
 ### 修复

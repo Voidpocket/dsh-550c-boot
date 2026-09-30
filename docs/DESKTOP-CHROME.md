@@ -48,9 +48,29 @@
 `darwin · window drag guard` 用例把这四个值都断言了。顶部 40px 条带在这段时间归窗口拖动，
 点击跳过请点别处或按 `Esc`。
 
-## macOS 上还没做的（评估稿）
+## macOS：让位、全屏与 HUD 条带
 
-`hiddenInset` + `trafficLightPosition{x:16,y:18}`、没有 `titleBarOverlay`（所以
-`env(titlebar-area-*)` 在 macOS 上不存在）、全屏时 preload 会打 `html[data-fullscreen]`——
-据此还有三处待改（让位常量与全屏塌陷、darwin 不再注入标题栏换色、HUD 条带标 `data-window-drag`），
-详见 [PLAN-macos-and-update-check.md](PLAN-macos-and-update-check.md)。
+macOS 没有 `titleBarOverlay`（整个 shell 里 `titlebar-area` 零命中），红绿灯由
+`titleBarStyle:'hiddenInset'` + `trafficLightPosition{x:16,y:18}` 画，所以 Windows 那套
+`env(titlebar-area-width)` 在 mac 上不存在。三处按 shell 自己的数字补齐：
+
+| 项 | 做法 | 依据 |
+|---|---|---|
+| HUD 让位 | `:host([data-caption="darwin"]) #hud-top{padding-left:76px}` | 16（x）+ 52（shell 自己给红绿灯留的条宽）+ 8 呼吸位 |
+| 全屏塌陷 | `[data-fullscreen]` 时 `padding-left/right:0` | 全屏时 macOS 收红绿灯、Windows 收 overlay 按钮；preload 用 `html[data-fullscreen]` 报这件事 |
+| 窗口可拖 | `#hud-top` 标 `data-window-drag` | 官方 base.css 把该标记变成 darwin 唯一那条 drag 规则；被标记行的空白段可拖、控件仍可点 |
+
+全屏标记由 `client.js` 用 `MutationObserver` 盯 `html[data-fullscreen]` 并镜像到宿主元素上，
+所以**片头正在放的时候**用户切全屏也跟得上，不是只在挂载那一刻读一次。
+
+darwin 上不再注入标题栏换色：preload 的探针元素只在 win32 创建
+（`syncWindowsAppearance()` 在非 win32 直接返回），那边根本没有可改的条带，注入纯属多余的
+`<head>` 变更。
+
+`initial` 是初始值（`none`），作用是让元素**退出** app-region 计算，而不是把整块遮罩变成拖拽把手，
+所以点击跳过照旧有效；`!important` 是必需的，官方那条选择器权重更高。看得到的区别：加了这条，
+遮罩的 computed `-webkit-app-region` 是 `none`，官方 `[data-window-drag]` 标题栏行保持 `drag`；
+去掉它，遮罩变成 `no-drag`（就是被吃掉的 bug）。`.verify/run-harness.mjs` 的
+`darwin · window drag guard` 用例把这四个值都断言了；HUD 让位那三处由
+`darwin · HUD reserve`（76px）、`…fullscreen before mount`、`…fullscreen after mount`（0px）覆盖。
+顶部 40px 条带在这段时间归窗口拖动，点击跳过请点别处或按 `Esc`。

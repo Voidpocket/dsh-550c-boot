@@ -1,6 +1,6 @@
 {
   "name": "dsh-550c-boot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "550C 开机动画：启动 DSH 时播放 550C 片头，简易模式只播 logo 加载动画，完整模式播完整的覆写流程；通用设置里可切换或关闭。",
   "type": "module",
   "main": "./lib/index.js",
