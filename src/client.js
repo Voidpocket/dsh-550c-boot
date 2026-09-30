@@ -602,15 +602,30 @@ function VersionRow() {
   const source = payload?.source === 'npmmirror' ? '国内镜像' : payload?.source === 'npmjs' ? 'npm 官方' : null
   const outdated = state.status === 'done' && payload !== null && payload.state === 'outdated'
   const canApply = payload?.canApply === true
+  // The host half is loaded when the process starts, the client half every time the
+  // page loads. So a page refresh can show this row while the host still has no
+  // routes at all — and the version global it injects is the cheapest proof of that.
+  const hostStale = current === null
+  const hostStaleHint =
+    '宿主半边还是旧版本：客户端刷新只换了页面那一半，宿主那一半要重启 DSH 客户端才会加载。' +
+    '重启后这个按钮就能用了。'
   let note = null
 
   if (state.status === 'checking') {
     note = React.createElement('div', { className: 'dsh550c-note' }, '正在检查…')
   } else if (state.status === 'failed') {
+    const missing = /404/.test(state.error)
     note = React.createElement(
       'div',
       { className: 'dsh550c-note bad' },
-      '检查失败（' + state.error + '），可以直接去 npm 页面看。',
+      missing ? hostStaleHint : '检查失败（' + state.error + '），可以直接去 npm 页面看。',
+      missing
+        ? React.createElement(
+            'button',
+            { type: 'button', className: 'dsh550c-link', onClick: () => copy(INSTALL_SPEC) },
+            copied ? '已复制' : '复制包名',
+          )
+        : null,
       React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openPackagePage }, '打开 npm 页面'),
     )
   } else if (outdated && applying.status === 'running') {
@@ -682,6 +697,9 @@ function VersionRow() {
         (current === null ? '' : '当前 v' + current + '。') +
           'DSH 自身没有插件更新入口，这里向本机宿主查询 npm 上的最新版本（优先国内镜像）。',
       ),
+      hostStale && state.status === 'idle'
+        ? React.createElement('div', { className: 'dsh550c-note bad' }, hostStaleHint)
+        : null,
       note,
     ),
     React.createElement(
