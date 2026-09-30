@@ -13,11 +13,21 @@
 
 - **让位**：`#hud-top` 按 `env(titlebar-area-width)` 预留出条带宽度，HUD 自己的 `TIME / ● REC`
   不再被压在按钮底下；普通浏览器标签页没有这个 env，预留自然塌成 0。
-- **换色**：桌面 preload 会用一个隐藏探针量 `--dsw-specific-sidebar-fill`（条带底色）和
-  `--dsw-alias-label-primary`（符号色），经 `dsh-desktop:windows-appearance` 交给
-  `setTitleBarOverlay`，并且 `<head>` 一变就重量一次。遮罩挂载时往 `<head>` 里塞一张把这两个
-  token 指向本配色（简易档是底色、完整档是 HUD 顶色，符号色是琥珀）的样式表，OS 画的那条就跟着
-  变成终端自己的颜色；卸载时移除，主题自动还原。
+- **条带透明**：桌面 preload 会建一个探针元素，把它的 computed `background-color` / `color` 经
+  `dsh-desktop:windows-appearance` 交给 `setTitleBarOverlay({color, symbolColor})`，并且 `<head>`
+  一变就重量一次。两个值都接受 alpha，所以片头挂载时把探针的底色设成 **`transparent`**
+  （preload 用 canvas 归一化成 `rgba(0, 0, 0, 0)`，主进程的颜色校验接受它），符号色设成当前配色 ——
+  那几个按钮就**浮在动画上**，不再压着一条不透明的色带；卸载时移除这张样式表，`<head>` 的这次变更
+  本身就是重量触发，主题自动还原。
+
+两个实现上的坑（都在真机上量到过）：
+
+1. 颜色必须写在**探针元素自己**身上，不能写 `:root`。探针是 body 级 `<span>`，内联样式读的是
+   `var(--dsw-specific-sidebar-fill)` / `var(--dsw-alias-label-primary)`，而 app 把这两个变量定义在
+   `body` 上 —— 自定义属性按**最近祖先**解析，`html` 上的 `!important` 压不过 `body` 上的普通声明，
+   所以 `:root` 方案在真机上完全没生效（整段片头条带都没变）。
+2. 读配色要等增强层样式表挂上之后再读：`--caption-symbol` 由 `src/enhance.js` 定义，早读会静默
+   落到兜底值，条带就一直是错的颜色。
 
 ## macOS：不吞掉窗口拖拽
 

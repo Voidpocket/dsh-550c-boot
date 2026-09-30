@@ -2,6 +2,17 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号用 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.2] - 2026-09-30
+
+### 变更
+
+- **桌面标题栏条带改为透明**：片头播放期间，右上角那几个原生按钮**浮在动画上**，不再压着一条
+  不透明的色带。做法是把 preload 探针元素的 `background-color` 设成 `transparent`、符号色设成当前
+  配色 —— 探针这两个 computed 值就是 `setTitleBarOverlay({color, symbolColor})` 的来源。
+- 两处只在真机暴露的坑修掉了：颜色必须写在探针元素**自己**身上（app 把 token 定义在 `body` 上，
+  `:root` 上的 `!important` 因"最近祖先"规则压不过它，整段片头条带都不变）；读配色要等增强层样式表
+  挂上之后再读，否则静默落到兜底值。
+
 ## [0.1.1] - 2026-09-29
 
 ### 修复
