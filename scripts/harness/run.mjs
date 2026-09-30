@@ -152,6 +152,10 @@ cases.push(['family bundle · marker collision', probe('simple', 'index-family.h
 //     with the symbols in the scheme's accent, and the app's own tokens untouched.
 cases.push(['caption · transparent strip', probe('simple', 'index.html', 'delay=0', 1500)])
 
+// 4d. the settings rows, rendered for real (scripts/harness/rows.js): the text a
+//     user reads, the buttons they get, and the three outcomes of the update check.
+cases.push(['settings rows · rendered text', probe('simple', 'index.html', 'delay=0', 2500)])
+
 // 5. the shell's failure card keeps its spinner removed: the cover must retire
 //    itself rather than hide the failure (the plugin never materialises here)
 cases.push(['failure card · cover retires itself', probe('simple', 'index-failure.html', 'delay=999999&coverAt=1500', 2500)])
@@ -237,7 +241,9 @@ const EXPECT = {
     // The Desktop preload's own probe: transparent strip, accent symbols.
     probeBackground: 'rgba(0, 0, 0, 0)',
     probeColor: 'rgb(232, 160, 32)',
-    probeSends: 2,
+    // 3, not 2: rendering the settings rows adds their style sheet to <head>,
+    // which is itself a re-measure trigger — the same mechanism the strip uses.
+    probeSends: 3,
     probeSelectorMatches: 1,
     probeIsBodyChild: true,
     // The app's own tokens are still the app's, which is what makes the probe
@@ -246,10 +252,32 @@ const EXPECT = {
     bodyLabelPrimary: '#f9fafb',
   },
   'failure card · cover retires itself': { coverApplied: true, coverAfterWatch: false },
+  // The settings rows, rendered for real by scripts/harness/rows.js: these are the
+  // exact strings a user reads, so a wording change has to be deliberate.
+  'settings rows · rendered text': {
+    'rows.ids': 'boot-550c,boot-550c-scheme,boot-550c-update',
+    'rows.mode.title': '550C 开机动画',
+    'rows.mode.desc': '启动时播放 550C 片头；完整模式可用点击或 Esc 跳过。',
+    'rows.mode.buttons': '关闭,简易,完整,预览',
+    'rows.scheme.desc': '琥珀是原作的配色，也是默认值。',
+    'rows.versionIdle.desc': /^当前 v\d+\.\d+\.\d+，从 npm 查询最新版本。$/,
+    'rows.versionIdle.buttons': '检查更新',
+    'rows.versionCurrent.note': /^已是最新 v\d+\.\d+\.\d+。打开 npm 页面$/,
+    'rows.versionDesktop.note': '有新版本 v9.9.9。在 设置 → 插件 里装 dsh-550c-boot@latest，然后重启。复制包名',
+    'rows.versionDesktop.canUpdate': false,
+    'rows.versionWeb.note': '有新版本 v9.9.9。点「立即更新」，然后重启客户端。',
+    'rows.versionWeb.canUpdate': true,
+    'rows.versionWeb.buttons': '检查更新,立即更新',
+    'rows.versionMissing.note': '宿主半边是旧版本，重启客户端后可用。打开 npm 页面',
+  },
 }
 
 let failures = 0
 let asserted = 0
+/** Field paths may be dotted: the settings-row report is a nested object. */
+const pick = (value, path) =>
+  path.split('.').reduce((current, key) => (current === null || current === undefined ? undefined : current[key]), value)
+
 for (const [name, value] of cases) {
   const expected = EXPECT[name]
   const isShot = typeof value === 'string'
@@ -267,8 +295,10 @@ for (const [name, value] of cases) {
   const problems = []
   for (const [field, want] of Object.entries(expected)) {
     asserted += 1
-    const got = value[field]
-    if (got !== want) problems.push(`${field}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`)
+    const got = pick(value, field)
+    // A RegExp expectation keeps version-bearing strings stable across releases.
+    const matches = want instanceof RegExp ? want.test(String(got)) : got === want
+    if (!matches) problems.push(`${field}: expected ${String(want)}, got ${JSON.stringify(got)}`)
   }
   if (problems.length === 0) {
     process.stdout.write(`  ok  ${String(Object.keys(expected).length)} assertions\n`)

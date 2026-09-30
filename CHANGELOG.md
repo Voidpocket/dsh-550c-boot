@@ -2,6 +2,19 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号用 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.3] - 2026-10-01
+
+### 变更
+
+- **设置行文案砍短**：按「检查更新」后只说结果 —— 「已是最新 vX。」「有新版本 vY。」（并说明怎么更新）
+  或错误一行，不再解释插件原理；三行的描述各缩成一句。
+
+### 新增
+
+- **设置行的文案进测试**：新增 `scripts/harness/rows.js`，用记录元素树的 React shim 在 harness 页里
+  真正渲染三个设置行、驱动按钮、读回用户会看到的文字；`settings rows · rendered text` 用例断言三行的
+  标题/描述/按钮，以及检查更新的五种结果（未按、已最新、桌面提示词、web 一键更新、404）。
+  此前行的 UI 从没被验过：harness 只用过工厂的副作用（片头）、没调用 `apply()`，node 侧又没有 react-dom。
 ## [0.3.2] - 2026-10-01
 
 ### 修复

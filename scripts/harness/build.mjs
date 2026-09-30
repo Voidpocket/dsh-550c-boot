@@ -125,6 +125,7 @@ const index = (doctype < 0 ? rawIndex : rawIndex.slice(doctype))
   .replace(/<link rel="modulepreload"[^>]*>\s*/, '')
 
 const HARNESS_SCRIPT = `
+<script src="/scripts/harness/rows.js"></script>
 <script src="/lib/client.js"></script>
 <script>
 (function () {
@@ -176,19 +177,49 @@ const HARNESS_SCRIPT = `
     var registration = queue.filter(function (row) { return row.id === 'dsh-550c-boot'; })[0];
     report.registration = registration !== undefined;
     if (registration === undefined) { finish(); return; }
+    // A recording React: the shim in scripts/harness/rows.js reads the element tree
+    // back out of it, so the settings rows can be rendered (and their text checked)
+    // without react-dom. createElement has to keep its children, which the old
+    // throwaway shim dropped.
     var React = {
-      createElement: function () { return null; },
-      useState: function (value) { return [value, function () {}]; },
+      createElement: function (type, props) {
+        var children = [];
+        for (var i = 2; i < arguments.length; i += 1) children.push(arguments[i]);
+        return { type: type, props: props || {}, children: children };
+      },
+      useState: function (value) { return [typeof value === 'function' ? value() : value, function () {}]; },
       useEffect: function () {},
       useCallback: function (fn) { return fn; }
     };
+    var exports = null;
     try {
-      registration.factory(function (spec) {
+      exports = registration.factory(function (spec) {
         if (spec === 'react') return React;
         throw new Error('unexpected external ' + spec);
       });
     } catch (error) {
       report.materialiseError = String((error && error.message) || error);
+    }
+    // The rows only exist once the plugin is given a context — the factory alone
+    // only mounts the splash — so run them here and report before the probe.
+    if (exports !== null && typeof exports.apply === 'function' && window.__dsh550cRows !== undefined) {
+      var realFetch = window.fetch;
+      try {
+        window.__dsh550cRows.run({
+          exports: exports,
+          React: React,
+          setFetch: function (impl) { window.fetch = impl; },
+          done: function (rows) {
+            window.fetch = realFetch;
+            report.rows = rows;
+            finish();
+          }
+        });
+        return;
+      } catch (error) {
+        window.fetch = realFetch;
+        report.rowsError = String((error && error.message) || error);
+      }
     }
     finish();
   }

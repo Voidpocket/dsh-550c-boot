@@ -325,5 +325,9 @@ console.log('\nplugin wiring')
   check('both handlers are functions', routes.every((route) => typeof route.handler === 'function'))
 }
 
+// The settings rows are rendered and asserted by the browser suite
+// (scripts/harness/rows.js + the "settings rows · rendered text" case): they live in
+// the client bundle, which only runs inside a page.
+
 console.log(failures === 0 ? '\nall cases pass' : `\n${String(failures)} FAILURES`)
 process.exitCode = failures === 0 ? 0 : 1
