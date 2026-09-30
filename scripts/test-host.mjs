@@ -166,8 +166,15 @@ console.log('\nregistry lookup (mirror first)')
 
 console.log('\nprofile handling')
 {
+  // The environment the CLI path is derived from has to be pinned: on this
+  // machine DSH_HOME and DSH_PROFILE_DIR are inherited from the running app, but
+  // CI has neither, and the argv assertion below would then compare against an
+  // empty path.
+  const saved = { DSH_PROFILE: process.env.DSH_PROFILE, DSH_HOME: process.env.DSH_HOME, DSH_PROFILE_DIR: process.env.DSH_PROFILE_DIR }
+  process.env.DSH_HOME = '/tmp/dsh-home'
+  process.env.DSH_PROFILE_DIR = '/tmp/dsh-home/profiles/web'
+
   const { profileInfo, installCommand } = load(registryOk('0.0.1'))
-  const before = process.env.DSH_PROFILE
   process.env.DSH_PROFILE = 'web'
   const web = profileInfo()
   check('web profile may be updated by the host', web.canApply === true && web.profile === 'web', JSON.stringify(web))
@@ -182,8 +189,11 @@ console.log('\nprofile handling')
   delete process.env.DSH_PROFILE
   const unknown = profileInfo()
   check('unknown profile is refused', unknown.canApply === false && unknown.reason === 'unknown-profile', JSON.stringify(unknown))
-  if (before === undefined) delete process.env.DSH_PROFILE
-  else process.env.DSH_PROFILE = before
+
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
 }
 
 console.log('\nupdate route')
@@ -217,7 +227,15 @@ console.log('\nupdate route')
 
 console.log('\nupdate service')
 {
-  const before = process.env.DSH_PROFILE
+  // Same reason as above: the CLI path comes from the environment, so pin it here
+  // too rather than relying on whatever the developer's shell happens to carry.
+  const savedEnv = {
+    DSH_PROFILE: process.env.DSH_PROFILE,
+    DSH_HOME: process.env.DSH_HOME,
+    DSH_PROFILE_DIR: process.env.DSH_PROFILE_DIR,
+  }
+  process.env.DSH_HOME = '/tmp/dsh-home'
+  process.env.DSH_PROFILE_DIR = '/tmp/dsh-home/profiles/web'
   process.env.DSH_PROFILE = 'desktop'
   const { applyHandler } = load(registryOk('0.0.1'), { spawn: fakeSpawn(0, 'should not run') })
   const desktop = fakeResponse()
@@ -253,8 +271,10 @@ console.log('\nupdate service')
   await noCli(fakeRequest('POST'), missing.res)
   check('no CLI -> 409 no-cli', missing.out.status === 409 && JSON.parse(String(missing.out.body)).reason === 'no-cli')
 
-  if (before === undefined) delete process.env.DSH_PROFILE
-  else process.env.DSH_PROFILE = before
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
 }
 
 console.log('\nplugin wiring')
