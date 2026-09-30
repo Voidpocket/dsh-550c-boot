@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  The fallback document for scripts/harness/build.mjs.
+
+  It is deliberately NOT a copy of the real dist page: it carries only what the
+  assertions need — an <html> the preload would have marked, a body-level #root,
+  the shell's boot card, and a module-loader shim the harness script can read the
+  plugin's registration out of. When the real page is available (extracted from
+  app.asar, or pointed at with DSH_550C_PAGE) the suite uses that instead, which is
+  strictly stronger; this file is what makes `npm run verify` work on a fresh
+  clone.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>dsh-550c-boot harness (fallback document)</title>
+    <style>
+      /* Stand-ins for the two app-level facts the plugin reacts to: a theme that
+         defines its tokens on body, and a body-level element the shell paints. */
+      html[data-ds-dark-theme] body {
+        --dsw-specific-sidebar-fill: #141008;
+        --dsw-alias-label-primary: #f9fafb;
+        background: #1e1e20;
+        color: #f9fafb;
+        font: 14px/1.5 system-ui;
+      }
+      #root { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div data-dsh-boot style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#1e1e20;font:600 34px/1.4 system-ui">
+        <div>HARNESS</div>
+        <div data-dsh-boot-spinner style="width:18px;height:18px;border:2px solid #666;border-radius:50%"></div>
+        <div style="font-size:15px;font-weight:400">Loading plugins…</div>
+      </div>
+    </div>
+    <script>
+      // The shell's module loader, reduced to the one thing the harness needs:
+      // a queue the plugin's bundle pushes its registration row onto.
+      window.__ModuleLoader__ = { pendingQueue: [] }
+    </script>
+  </body>
+</html>

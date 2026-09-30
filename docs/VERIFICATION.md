@@ -2,40 +2,38 @@
 
 [← 回到 README](../README.md)
 
-## 开发
+## 三条命令
 
 ```sh
-npm run build              # extract + build（只重写 lib/client.js）
-node --check lib/client.js
-node --check lib/index.js  # 宿主半边是手写的，同样要过一遍
+npm run build          # extract + build（只重写 lib/client.js）
+npm test               # 宿主半边：路由处理器、版本比较、apply() 的接线（纯 node，无需浏览器）
+npm run test:harness   # 浏览器里跑真实插件：15 个用例 / 54 条断言（自动起静态服务器）
 ```
 
-构建是**幂等**的：`npm run build` 后再 `git diff --exit-code -- lib/client.js` 必须是空的，
-CI 就在盯这件事。
+`npm run verify` 把三件事串起来（build → check → test → harness）。构建是**幂等**的：
+`npm run build` 之后再 `git diff --exit-code -- lib/client.js` 必须是空的，CI 就在盯这件事。
 
-## 首帧 / 标题栏（不需要起 GUI）
+## 浏览器套件（`scripts/harness/`）
 
-`.verify/build-harness.mjs` + `.verify/run-harness.mjs` 把**真实的 index.html**（从 app.asar 里取出
-的 web-frontend dist）用 **DSH 自己的行渲染器**（`.verify/dsh-render-rows.mjs`，逐字复制自
-`@deepseek-ai/dsh-host-webserver`）套上**插件自己产出的行**，再用无头 Edge 跑：
+把**真实的 index.html**（从 app.asar 取出的 web-frontend dist）用 DSH 自己的行渲染器
+（`scripts/harness/render-rows.mjs`）套上**插件自己产出的行**，再用无头浏览器跑。
 
-```sh
-node .verify/build-harness.mjs                      # 收集行 + 渲染 harness 页
-node .verify/serve.mjs 3499                         # 静态服务器（后台）
-node .verify/run-harness.mjs 3499                   # 跑六组探针 + 四张截图（含 darwin 拖拽守卫）
-```
+拿不到真实页面时（新克隆、没装 DSH）会自动退回仓里的 `scripts/harness/fallback.html`：
+断言会弱一些，但套件仍然可跑 —— 这是把它提交进仓的意义。也可以用 `DSH_550C_PAGE=<path>` 指定页面、
+`DSH_550C_BROWSER=<path>` 指定浏览器；找不到任何浏览器时套件会**跳过并退出 0**，宿主测试才是硬门。
 
-| 断言 | 结果 |
+| 用例 | 断言 |
 |---|---|
-| 首帧早于任何插件代码（`coverApplied`） | true（控件页同页面为 false） |
-| 首帧退役与遮罩挂载同一任务（`coverAfterModule`） | false（类已移除）、握手全局已消费 |
-| 桌面平台下挂载配色（`data-platform=win32`） | `data-caption=windows`，`<head>` 有了换色样式表 |
-| 配色随档位/方案 | 简易 `#050403`、完整 `#141008`，符号色 `#e8a020` |
-| 预留规则存在、浏览器里塌成 0 | true / `padding-right: 0px` |
-| 关闭档 | 不作画、不挂载、不定义握手全局 |
-| macOS 拖拽守卫（`data-platform=darwin`） | 宿主带 `data-dsh-boot-splash`；computed `-webkit-app-region`：有守卫 `none`、抽掉守卫 `no-drag`（对照）、插回 `none`；官方 `[data-window-drag]` 行仍为 `drag`；点击后遮罩正常卸载 |
-
-截图在 `.verify/shots/`：同样的页面，**有行**时是纯黑首帧，**抽掉行**时 HARNESS 卡片就在那儿。
+| `simple · plugin rows` | 首帧早于任何插件代码、退役与挂载同一任务、`data-caption=windows` |
+| `simple · rows withheld` / `off · plugin rows` | 对照组：没有行 / 关闭档时首帧与遮罩都不出现 |
+| `full · plugin rows` | 完整档 HUD 在、浏览器里预留塌成 0 |
+| `darwin · window drag guard` | 有守卫 `none`、抽掉守卫 `no-drag`（对照）、插回 `none`、官方 `[data-window-drag]` 行仍 `drag` |
+| `darwin · HUD reserve` | 让位 `76px`；HUD **没有**被标 `data-window-drag`（shadow 里标了也没用） |
+| `… fullscreen before/after mount` | 全屏时让位塌成 `0px`，宿主元素同步到 `data-fullscreen`（挂载前后两条路径） |
+| `family bundle · marker collision` | 家族包的 `[data-dsh-boot-splash]` 规则与 shield 都碰不到我们：z-index 仍是 2147483000、`pointer-events:auto`、背景是本片头底色、拖拽带 `drag`、点击跳过仍有效 |
+| `caption · transparent strip` | 桌面 preload 探针：底色 `rgba(0,0,0,0)`、符号 `rgb(232,160,32)`，而 app 自己的 token 原样不动 |
+| `failure card · cover retires itself` | shell 的失败卡片不会被首帧盖住 |
+| 4 张截图 | 有行时纯黑首帧、抽掉行时 HARNESS 卡片可见、简易/完整档播放中 |
 
 ## 真实 GUI
 
@@ -59,7 +57,7 @@ node scripts/verify.mjs --url '…' --mode full  --at 3000 --skip       # 跳过
 | 完整模式播放 | 7s 时 `appInShadow: true`、63 行日志、47 节点全部 `done` |
 | 完整模式收尾 | 15s 时 `host: false`，遮罩已卸载 |
 | 关闭档 | `--mode off` 时 `host: false`，遮罩从不挂载 |
-| 通用设置行 | `rowTitle: "550C 开机动画"`，三档 `["关闭","简易","完整"]`，当前档高亮，`预览` 按钮在 |
+| 通用设置行 | 行标题、三档 `["关闭","简易","完整"]`、当前档高亮、`预览` 按钮在 |
 | Esc 跳过 | 3s 时 `hostBefore: true` → Esc 后 `hostAfterEsc: false` |
 
 截图存在 `.verify/shots/`；README 顶部那三张对外预览在 [`docs/`](.)。

@@ -2,6 +2,33 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号用 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-30
+
+### 新增
+
+- **设置里的「版本与更新」**：DSH 自身没有插件更新入口，这一行向本机宿主查询 GitHub 上的最新发布。
+  请求走宿主半边的同源路由 `GET /dsh-550c-boot/update`（页面 CSP 很紧，而宿主进程本来就管出网），
+  按下按钮才查、上游结果缓存 10 分钟；有新版本时给出安装包名与发布页，查不到就直说查不到。
+  宿主半边顺带用 `global` 注入行把运行版本交给页面；路由通过**可选注入**
+  （`ctx.inject(['webServer'], …)`）注册 —— 没有 HTTP carrier 的 profile 照样有片头，只是这行少个按钮。
+
+### 修复
+
+- **不再借 `dsh-web` 全家桶的 `data-dsh-boot-splash` 标记**（维护者 review 指出，真机后果很重）。
+  那个名字不是豁免而是契约：全家桶会样式化它（`pointer-events:none`、`z-index:9999`、不透明底色、
+  自己的 `transition`），它的 boot shield 还会找到并复用、约 1.2 秒后 `remove()`。装全家桶的用户会
+  失去点击跳过、失去两段式交接、片头一秒出头被删。现在带自己的 `data-dsh-550c-boot`，用标准的
+  `aria-hidden="true"` 换同一条拖拽豁免；`z-index` / `background` / `pointer-events` / `transition`
+  显式声明在 document 级样式表里并带 `!important` —— 文档树的普通声明本来就压过 shadow 里的 `:host`。
+- **0.1.4 给 shadow root 里的 `#hud-top` 标 `data-window-drag` 是无效的**（维护者 review 指出）：
+  官方规则是 `html[data-platform=darwin] [data-window-drag]{-webkit-app-region:drag}`，与 shell 的
+  同步查询都在文档树里，看不见 shadow root 内的属性。改成一条 40px 的**文档级拖拽带**，并显式声明
+  `-webkit-app-region:drag`（Windows 也生效）。代价：这 40px 里的点击归窗口拖动，跳过按 `Esc`。
+- 去掉没有任何源码 import 的 `ajv`：本插件现在是**零运行时依赖**。
+- **可复现的断言进仓**：新增 `scripts/test-host.mjs`（宿主半边，纯 node，CI 硬门）与
+  `scripts/harness/`（浏览器套件：15 用例 / 54 断言，自动起静态服务器，拿不到真实页面时退回内置
+  兜底页，找不到浏览器则跳过）。此前这些断言都在 gitignore 的 `.verify/` 里，新克隆拿不到。
+
 ## [0.1.4] - 2026-09-30
 
 ### 修复

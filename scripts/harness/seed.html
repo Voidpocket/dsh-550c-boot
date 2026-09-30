@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>seed</title>
+  </head>
+  <body>
+    <!--
+      Harness scaffolding, part of scripts/harness (tracked on purpose).
+
+      The splash reads its mode from localStorage, so the browser profile has to
+      carry the preference BEFORE the harness page is parsed. Seeding in a separate
+      headless run is not reliable — the write can be lost when that process exits —
+      so this page seeds and then navigates in the SAME session:
+
+        seed.html?mode=full&next=%2F.verify%2Fharness%2Findex.html%3Fdelay%3D0
+    -->
+    <script>
+      const params = new URLSearchParams(location.search)
+      const mode = params.get('mode') || 'simple'
+      const next = params.get('next')
+      localStorage.setItem('dsh-550c-boot:mode', mode)
+      document.body.textContent = 'seeded ' + mode
+      if (next !== null) location.replace(next)
+    </script>
+  </body>
+</html>

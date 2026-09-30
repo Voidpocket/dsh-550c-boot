@@ -31,22 +31,27 @@
 
 ## macOS：不吞掉窗口拖拽
 
-官方基础样式表把**每个 body 直接子元素**都算成 `-webkit-app-region: no-drag`（选择器只放过应用
-自己的根元素），于是铺满视口的 body 级元素会**把整扇窗口从 macOS 可拖拽区域里减掉**：片头在放的
-时候，标题栏拖不动、双击缩放也失效。`pointer-events: none` 不豁免这件事，只有元素自己声明才行。
+官方基础样式表把**每个 body 直接子元素**都算成 `-webkit-app-region: no-drag`，选择器是
+`html[data-platform=darwin] body>:not(#root)` —— 平台限定 + 只放过应用自己的根元素。于是铺满视口的
+body 级元素会**把整扇窗口从 macOS 可拖拽区域里减掉**：片头在放的时候，标题栏拖不动、双击缩放也
+失效。`pointer-events: none` 不豁免这件事，只有元素自己声明才行。
 
-所以遮罩挂载时同时做两件事：
-
-- 宿主元素带 `data-dsh-boot-splash` —— 这是 `dsh-web` 全家桶（`dsh-web-all`）专门豁免的三个标记之一；
-- 自己往 `<head>` 塞一张 `html[data-platform="darwin"] body>.dsh550c-host{-webkit-app-region:initial !important}`
-  —— 没装全家桶的纯 DSH 靠这一条。
-
+遮罩挂载时，宿主自己往 `<head>` 塞一张
+`html[data-platform="darwin"] body>.dsh550c-host{-webkit-app-region:initial !important}`：
 `initial` 是初始值（`none`），作用是让元素**退出** app-region 计算，而不是把整块遮罩变成拖拽把手，
-所以点击跳过照旧有效；`!important` 是必需的，官方那条选择器权重更高。看得到的区别：加了这条，
-遮罩的 computed `-webkit-app-region` 是 `none`，官方 `[data-window-drag]` 标题栏行保持 `drag`；
-去掉它，遮罩变成 `no-drag`（就是被吃掉的 bug）。`.verify/run-harness.mjs` 的
-`darwin · window drag guard` 用例把这四个值都断言了。顶部 40px 条带在这段时间归窗口拖动，
-点击跳过请点别处或按 `Esc`。
+所以点击跳过照旧有效；`!important` 是必需的，官方那条选择器权重更高。
+
+**别借 `dsh-web` 全家桶的 `data-dsh-boot-splash` 标记。** 0.1.1–0.1.4 借过，代价是：那个名字不是
+豁免而是契约 —— 全家桶会样式化它（不透明底色、`pointer-events:none`、`z-index:9999`、自己的
+`transition`），而它的 boot shield 还会 `querySelector('div[data-dsh-boot-splash]')` 找到并**复用**、
+约 1.2 秒后 `remove()`。结果是装了全家桶的人：点击跳过被静默关掉、两段式交接被中和、片头一秒出头
+被删。现在宿主带自己的 `data-dsh-550c-boot`，并用标准的 `aria-hidden="true"` 换取全家桶的同一条
+拖拽豁免；几何（`z-index` / `background` / `pointer-events` / `transition`）全部**显式声明在
+document 级样式表**里并带 `!important` —— 文档树的普通声明本来就压过 shadow 里的 `:host`，把
+宿主的关键属性交给 `:host` 等于交给别人改写。
+
+`.verify` 那套断言已经搬进仓：`npm run test:harness` 的 `darwin · window drag guard` 断言四个
+app-region 值，`family bundle · marker collision` 复现全家桶的样式表与 shield 并断言它们碰不到我们。
 
 ## macOS：让位、全屏与 HUD 条带
 
@@ -58,7 +63,14 @@ macOS 没有 `titleBarOverlay`（整个 shell 里 `titlebar-area` 零命中）�
 |---|---|---|
 | HUD 让位 | `:host([data-caption="darwin"]) #hud-top{padding-left:76px}` | 16（x）+ 52（shell 自己给红绿灯留的条宽）+ 8 呼吸位 |
 | 全屏塌陷 | `[data-fullscreen]` 时 `padding-left/right:0` | 全屏时 macOS 收红绿灯、Windows 收 overlay 按钮；preload 用 `html[data-fullscreen]` 报这件事 |
-| 窗口可拖 | `#hud-top` 标 `data-window-drag` | 官方 base.css 把该标记变成 darwin 唯一那条 drag 规则；被标记行的空白段可拖、控件仍可点 |
+| 窗口可拖 | document 级拖拽带 `body>.dsh550c-dragband{-webkit-app-region:drag}` | 见下 |
+
+**拖拽带为什么在文档树里，而不是标 `#hud-top`。** 0.1.4 给 shadow root 内的 `#hud-top` 标了
+`data-window-drag` —— 看着对，实际什么也不做：官方规则是
+`html[data-platform=darwin] [data-window-drag]{-webkit-app-region:drag}`，它和 shell 自己的同步查询
+都在**文档树**里，看不见 shadow root 里的属性。所以改成一条 40px 高的文档级横带（`data-window-drag`
++ 显式 `-webkit-app-region:drag`，后者让 Windows 也生效 —— 那条官方规则是 darwin 限定的），挂在遮罩
+之上。代价写在明处：**这 40px 里的点击归窗口拖动**，跳过请按 `Esc` 或点条带以下。
 
 全屏标记由 `client.js` 用 `MutationObserver` 盯 `html[data-fullscreen]` 并镜像到宿主元素上，
 所以**片头正在放的时候**用户切全屏也跟得上，不是只在挂载那一刻读一次。
@@ -67,10 +79,9 @@ darwin 上不再注入标题栏换色：preload 的探针元素只在 win32 创�
 （`syncWindowsAppearance()` 在非 win32 直接返回），那边根本没有可改的条带，注入纯属多余的
 `<head>` 变更。
 
-`initial` 是初始值（`none`），作用是让元素**退出** app-region 计算，而不是把整块遮罩变成拖拽把手，
-所以点击跳过照旧有效；`!important` 是必需的，官方那条选择器权重更高。看得到的区别：加了这条，
-遮罩的 computed `-webkit-app-region` 是 `none`，官方 `[data-window-drag]` 标题栏行保持 `drag`；
-去掉它，遮罩变成 `no-drag`（就是被吃掉的 bug）。`.verify/run-harness.mjs` 的
-`darwin · window drag guard` 用例把这四个值都断言了；HUD 让位那三处由
-`darwin · HUD reserve`（76px）、`…fullscreen before mount`、`…fullscreen after mount`（0px）覆盖。
-顶部 40px 条带在这段时间归窗口拖动，点击跳过请点别处或按 `Esc`。
+全屏标记由 `client.js` 用 `MutationObserver` 盯 `html[data-fullscreen]` 并镜像到宿主元素上，
+所以**片头正在放的时候**用户切全屏也跟得上，不是只在挂载那一刻读一次。
+
+`npm run test:harness` 里 HUD 让位那三处由 `darwin · HUD reserve`（76px）、
+`…fullscreen before mount`、`…fullscreen after mount`（0px）覆盖；拖拽那条由
+`family bundle · marker collision` 断言（`dragBandAppRegion: drag`）。

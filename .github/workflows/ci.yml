@@ -1,7 +1,12 @@
-# CI: the committed browser bundle must be produced by the committed sources.
+# CI: the committed browser bundle must be produced by the committed sources, and
+# the behaviour that can be checked without a GUI must actually be checked.
 #
-# No dependencies on purpose — the build is `node scripts/*.mjs`, so this
-# workflow needs no install step and cannot be broken by a lockfile drift.
+# No dependencies on purpose — the build and both suites are plain `node scripts/*`,
+# so this workflow needs no install step and cannot be broken by a lockfile drift.
+#
+# The browser suite drives a headless Edge/Chrome/Chromium. GitHub's ubuntu image
+# ships Chrome; when no browser is present the suite reports that and exits 0, so
+# `npm test` (pure node) stays the hard gate.
 name: ci
 
 on:
@@ -21,5 +26,9 @@ jobs:
         run: npm run build
       - name: Parse both halves
         run: npm run check
+      - name: Host-half tests (update route, version compare, apply() wiring)
+        run: npm test
       - name: The committed bundle must match the sources
         run: git diff --exit-code -- lib/client.js
+      - name: Browser suite (15 cases / 54 assertions; skips without a browser)
+        run: npm run test:harness

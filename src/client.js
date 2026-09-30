@@ -36,10 +36,18 @@ const FADE_MS = 620
 const ROW_STYLE_ID = 'dsh-550c-boot-row-style'
 /** Handshake with the host half's first frame (see endFirstFrame + lib/index.js). */
 const FIRST_FRAME_GLOBAL = '__dsh550cFirstFrame'
+/** The host half's injected version (see lib/index.js VERSION_GLOBAL). */
+const VERSION_GLOBAL = '__dsh550cVersion'
+/** The host half's update route (see lib/index.js UPDATE_ROUTE). */
+const UPDATE_ROUTE = '/dsh-550c-boot/update'
+/** Where the row sends anyone the check cannot help. */
+const RELEASES_URL = 'https://github.com/yannicksong0106/dsh-550c-boot/releases'
+/** What to install to get a newer build; works in the in-app box and in the CLI. */
+const INSTALL_SPEC = 'dsh-550c-boot@latest'
 /** The host-document sheet that makes the Desktop caption strip see-through. */
 const CAPTION_STYLE_ID = 'dsh-550c-boot-caption'
-/** The host-document sheet that keeps the overlay out of the macOS drag region. */
-const DRAG_GUARD_STYLE_ID = 'dsh-550c-boot-drag-guard'
+/** The host-document sheet that owns the overlay's geometry, drag guard and band. */
+const HOST_SHEET_ID = 'dsh-550c-boot-host'
 
 /** The one live splash; the boot trigger and the preview button share it. */
 let liveOverlay = null
@@ -111,6 +119,13 @@ const ROW_CSS = `
 .dsh550c-seg button.on{background:var(--dsw-alias-brand-primary,#4d6bfe);color:#fff}
 .dsh550c-preview{border:1px solid var(--dsw-alias-border-l2,rgba(127,127,127,.35));background:transparent;color:var(--dsw-alias-label-primary,#191919);font-family:inherit;font-size:12.5px;line-height:1.4;padding:5px 14px;border-radius:8px;cursor:pointer}
 .dsh550c-preview:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.14))}
+.dsh550c-preview[disabled]{opacity:.55;cursor:default}
+.dsh550c-note{margin-top:6px;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary,#666)}
+.dsh550c-note b{color:var(--dsw-alias-label-primary,#191919);font-weight:600}
+.dsh550c-note.up{color:var(--dsw-alias-brand-primary,#4d6bfe)}
+.dsh550c-note.bad{color:var(--dsw-alias-label-error,#d4380d)}
+.dsh550c-link{border:0;background:transparent;padding:0;margin:0 0 0 8px;font-family:inherit;font-size:12px;color:var(--dsw-alias-brand-primary,#4d6bfe);cursor:pointer;text-decoration:underline}
+.dsh550c-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.14));border-radius:6px;padding:2px 6px}
 `
 
 function ensureRowStyle() {
@@ -122,33 +137,62 @@ function ensureRowStyle() {
 }
 
 /**
- * macOS window-drag guard.
+ * The host element's own sheet, in the DOCUMENT rather than the shadow root.
  *
- * DSH's official base stylesheet turns every DIRECT body child into a
- * `-webkit-app-region: no-drag` region — its selector spares only the app's own
- * root element. A body-level element that spans the viewport therefore subtracts
- * the whole window from the macOS draggable region: while the splash is up the
- * window cannot be dragged by its title area, and macOS no longer runs the
- * system double-click action (zoom) there. `pointer-events: none` does not exempt
- * an element from that computation; only a declaration of its own does.
+ * Two separate reasons, both measured against real third-party sheets:
  *
- * `data-dsh-boot-splash` is the marker the dsh-web family bundle exempts
- * (packages/dsh-web-all/src/client/index.ts), so carrying it is what keeps this
- * plugin a good citizen there; this sheet is the same declaration for installs
- * that ship no such bundle. `initial` is the initial value (`none`), which takes
- * the element out of the app-region computation instead of turning the whole
- * overlay into a drag handle — click-to-skip keeps working. `!important` is
- * required because the official selector outranks this one.
+ *   geometry   any document-level rule outranks a `:host` declaration, because
+ *              the shadow root cannot defend its host from outside. The dsh-web
+ *              family bundle ships exactly such a rule for a marker this plugin
+ *              used to borrow —
+ *              `[data-dsh-boot-splash]{position:fixed;inset:0;z-index:9999;
+ *              background:var(--dsw-alias-bg-base,#1e1e20);pointer-events:none;
+ *              transition:opacity 160ms …}` — which silently disabled
+ *              click-to-skip (`pointer-events:none`), dropped the overlay under
+ *              the app's own layers (9999), repainted it and replaced the
+ *              hand-off transition. The marker is now this plugin's own
+ *              (`data-dsh-550c-boot`, see mountOverlay) and these declarations
+ *              are `!important`, so no third-party sheet can take the overlay
+ *              over again.
+ *
+ *   drag       DSH's official base stylesheet turns every DIRECT body child into
+ *              a `-webkit-app-region: no-drag` region on darwin — its selector,
+ *              `html[data-platform=darwin] body>:not(#root)`, spares only the
+ *              app's own root element. A viewport-spanning body child therefore
+ *              subtracts the whole window from the draggable region: while the
+ *              splash is up the window cannot be dragged by its title area and
+ *              macOS stops running the system double-click action there.
+ *              `pointer-events: none` does not exempt an element from that
+ *              computation; only a declaration of its own does. `initial` is the
+ *              initial value (`none`), which takes the element OUT of the
+ *              computation instead of turning the whole overlay into a drag
+ *              handle — click-to-skip keeps working. `!important` is required
+ *              because the official selector outranks this one.
+ *
+ * `aria-hidden="true"` on the host is the second half of the drag story: the
+ * family bundle exempts that standard attribute too, so an install that ships it
+ * gets the same treatment without this plugin borrowing a family-private name.
  */
-const DRAG_GUARD_CSS = `
+const HOST_SHEET_CSS = `
+body>.dsh550c-host{position:fixed;inset:0;display:block;box-sizing:border-box;z-index:2147483000 !important;background:var(--bg,#050403);pointer-events:auto !important}
+body>.dsh550c-host.dsh550c-out{opacity:0;transition:opacity 420ms cubic-bezier(.4,0,.2,1) 200ms !important}
 html[data-platform="darwin"] body>.dsh550c-host{-webkit-app-region:initial !important}
+/* A real drag region for the window's top strip while the splash plays. The HUD
+   strip lives inside the shadow root, where the official rule
+   html[data-platform=darwin] [data-window-drag]{-webkit-app-region:drag} can
+   never match — the shell's own queries and that sheet are all in the document
+   tree — so the band is a document-level element instead, and the property is
+   declared explicitly so Windows (where that rule does not exist at all) drags
+   too. It sits above the overlay, which is why clicks inside the top 40px go to
+   the window rather than to skip-the-splash: press Esc, or click below the band. */
+body>.dsh550c-dragband{position:fixed;top:0;left:0;right:0;height:40px;z-index:2147483001;-webkit-app-region:drag}
 `
 
-function ensureDragGuard() {
-  if (document.getElementById(DRAG_GUARD_STYLE_ID) !== null) return
+function ensureHostSheet() {
+  if (document.getElementById(HOST_SHEET_ID) !== null) return
   const style = document.createElement('style')
-  style.id = DRAG_GUARD_STYLE_ID
-  style.textContent = DRAG_GUARD_CSS
+  style.id = HOST_SHEET_ID
+  style.textContent = HOST_SHEET_CSS
   document.head.appendChild(style)
 }
 
@@ -308,11 +352,23 @@ function mountOverlay(force) {
 
   const host = document.createElement('div')
   host.className = 'dsh550c-host'
-  // Body-level overlays are subtracted from the macOS draggable region unless
-  // they declare otherwise: the marker is what the dsh-web family bundle
-  // exempts, ensureDragGuard() is the same exemption for installs without it.
-  host.dataset.dshBootSplash = ''
-  ensureDragGuard()
+  // This plugin's OWN marker. It used to borrow the dsh-web family's
+  // `data-dsh-boot-splash`, which turned out to be a trap: that name is not an
+  // exemption but a contract — the family styles it (opaque background,
+  // pointer-events:none, z-index 9999, its own transition) and its boot shield
+  // reuses and then REMOVES any `div[data-dsh-boot-splash]` it finds. Carrying it
+  // meant the splash lost click-to-skip, its fade and its lifetime on every
+  // install that ships the family bundle. `aria-hidden="true"` is the standard
+  // attribute that earns the same drag exemption without borrowing a private name.
+  host.dataset.dsh550cBoot = ''
+  host.setAttribute('aria-hidden', 'true')
+  ensureHostSheet()
+  // The document-level drag band that makes the window draggable while the splash
+  // plays (the HUD strip is inside the shadow root, where the official rule cannot
+  // reach — see HOST_SHEET_CSS).
+  const dragBand = document.createElement('div')
+  dragBand.className = 'dsh550c-dragband'
+  dragBand.setAttribute('data-window-drag', '')
   // The scheme is applied as data on the host, which is what the stylesheet's
   // :host([data-scheme=…]) blocks key on. Amber sets nothing on purpose.
   const scheme = readScheme()
@@ -324,8 +380,10 @@ function mountOverlay(force) {
   // the screen? (Read by scripts/verify.mjs.)
   host.dataset.sawBootCard = String(document.querySelector('[data-dsh-boot]') !== null)
   document.body.appendChild(host)
+  // Above the overlay, so the window can still be dragged by its title strip.
+  document.body.appendChild(dragBand)
 
-  const record = { host: host, show: null, enhance: null, caption: null, finished: false, fadeTimer: null, watchdog: null, dispose: null }
+  const record = { host: host, dragBand: dragBand, show: null, enhance: null, caption: null, finished: false, fadeTimer: null, watchdog: null, dispose: null }
 
   const skip = () => {
     if (record.show !== null) record.show.cancel()
@@ -341,6 +399,7 @@ function mountOverlay(force) {
     if (record.caption !== null) record.caption()
     host.removeEventListener('click', skip)
     window.removeEventListener('keydown', onKey, true)
+    dragBand.remove()
     host.remove()
     if (liveOverlay === record) liveOverlay = null
   }
@@ -462,6 +521,139 @@ function SettingsRow() {
 }
 
 /**
+ * The version row: what is installed, and whether anything newer exists.
+ *
+ * DSH has no plugin updater of its own (the inventory surface is read-only), so
+ * this is the one place a user can ask. The request goes to the HOST half's route
+ * (`GET /dsh-550c-boot/update`), not to GitHub: the served document's CSP is
+ * restrictive and the host process already owns outbound network access, so one
+ * same-origin call keeps the client free of CORS and CSP questions. Nothing is
+ * checked until the button is pressed.
+ */
+function VersionRow() {
+  const [current] = React.useState(() =>
+    typeof window[VERSION_GLOBAL] === 'string' && window[VERSION_GLOBAL] !== '' ? window[VERSION_GLOBAL] : null,
+  )
+  const [state, setState] = React.useState({ status: 'idle', payload: null, error: null })
+  const [copied, setCopied] = React.useState(false)
+
+  React.useEffect(() => {
+    ensureRowStyle()
+  }, [])
+
+  const check = React.useCallback(() => {
+    setState({ status: 'checking', payload: null, error: null })
+    setCopied(false)
+    let failed = false
+    fetch(UPDATE_ROUTE, { headers: { accept: 'application/json' } })
+      .then((response) => {
+        if (!response.ok) throw new Error('HTTP ' + String(response.status))
+        return response.json()
+      })
+      .then((payload) => {
+        if (!failed) setState({ status: 'done', payload: payload, error: null })
+      })
+      .catch((error) => {
+        failed = true
+        setState({ status: 'failed', payload: null, error: String(error?.message ?? error) })
+      })
+  }, [])
+
+  const copy = React.useCallback(() => {
+    setCopied(false)
+    try {
+      const clipboard = navigator.clipboard
+      if (clipboard !== undefined && typeof clipboard.writeText === 'function') {
+        clipboard.writeText(INSTALL_SPEC).then(
+          () => setCopied(true),
+          () => setCopied(false),
+        )
+      }
+    } catch (error) {
+      /* clipboard refused: the spec is on screen to select by hand */
+    }
+  }, [])
+
+  const openRelease = React.useCallback(() => {
+    const url = state.payload?.url ?? RELEASES_URL
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      /* a blocked popup is not worth an error state; the URL is public */
+    }
+  }, [state.payload])
+
+  const payload = state.payload
+  const outdated = state.status === 'done' && payload !== null && payload.state === 'outdated'
+  let note = null
+  if (state.status === 'checking') {
+    note = React.createElement('div', { className: 'dsh550c-note' }, '正在检查…')
+  } else if (state.status === 'failed') {
+    note = React.createElement(
+      'div',
+      { className: 'dsh550c-note bad' },
+      '检查失败（' + state.error + '），可以直接去发布页看。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+    )
+  } else if (state.status === 'done' && outdated) {
+    note = React.createElement(
+      'div',
+      { className: 'dsh550c-note up' },
+      '有新版本 ',
+      React.createElement('b', null, 'v' + String(payload.latest)),
+      '（当前 v' + String(payload.current ?? current ?? '?') + '）。装法：在 设置 → 插件 的安装框里填 ',
+      React.createElement('span', { className: 'dsh550c-code' }, INSTALL_SPEC),
+      '，或命令行 ',
+      React.createElement('span', { className: 'dsh550c-code' }, 'dsh plugin --profile <profile> add ' + INSTALL_SPEC),
+      '，然后重启。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: copy }, copied ? '已复制' : '复制包名'),
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+    )
+  } else if (state.status === 'done') {
+    note = React.createElement(
+      'div',
+      { className: 'dsh550c-note' },
+      payload !== null && payload.state === 'unknown'
+        ? '暂时问不到最新版本，可以直接去发布页看。'
+        : '已是最新（v' + String(payload?.current ?? current ?? '?') + '）。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+    )
+  }
+
+  return React.createElement(
+    'div',
+    { className: 'dsh550c-row' },
+    React.createElement(
+      'div',
+      { className: 'dsh550c-row-text' },
+      React.createElement('div', { className: 'dsh550c-row-title' }, '版本与更新'),
+      React.createElement(
+        'div',
+        { className: 'dsh550c-row-desc' },
+        current === null
+          ? 'DSH 自身没有插件更新入口，这里向本机宿主查询 GitHub 上的最新发布。'
+          : '当前 v' + current + '。DSH 自身没有插件更新入口，这里向本机宿主查询 GitHub 上的最新发布。',
+      ),
+      note,
+    ),
+    React.createElement(
+      'div',
+      { className: 'dsh550c-row-ctrl' },
+      React.createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'dsh550c-preview',
+          disabled: state.status === 'checking',
+          onClick: check,
+        },
+        state.status === 'checking' ? '检查中…' : '检查更新',
+      ),
+    ),
+  )
+}
+
+/**
  * The colour-scheme row. Amber is the original author's palette — the default,
  * and the only one that overrides nothing at all.
  */
@@ -534,6 +726,9 @@ function apply(ctx) {
   )
   ctx.slots.inject('settings.general.item', () =>
     ctx.slots.register({ name: 'settings.general.item', id: 'boot-550c-scheme', order: 27 }, SchemeRow),
+  )
+  ctx.slots.inject('settings.general.item', () =>
+    ctx.slots.register({ name: 'settings.general.item', id: 'boot-550c-update', order: 28 }, VersionRow),
   )
 
   // The splash is deliberately NOT a slot contribution — mountOverlay() explains

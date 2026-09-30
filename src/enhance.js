@@ -389,20 +389,18 @@ function enhanceShow(stage, options) {
     else if (cls.contains('uav')) deepenNode(el)
     else if (cls.contains('ll')) remapLogLine(el)
     else if (cls.contains('wp-row')) fixRow(el)
-    else if (el.id === 'hud-top') markWindowDrag(el)
     for (const child of el.children) decorate(child)
   }
 
-  /* ── the HUD strip as window chrome ────────────────────────────────── */
-  // `data-window-drag` is the shell's own marker for a draggable chrome row:
-  // ui-web's base.css turns it into the single darwin drag rule, and a marked
-  // row's blank segments drag while its controls stay clickable. Marking the HUD
-  // strip therefore keeps the window draggable while the full-mode splash is up —
-  // otherwise the overlay covers the shell's own chrome row for the whole run.
-  function markWindowDrag(el) {
-    if (el.dataset.windowDrag !== undefined) return
-    el.dataset.windowDrag = ''
-  }
+  /* ── why #hud-top is NOT marked as window chrome ───────────────────── */
+  // 0.1.4 marked #hud-top with `data-window-drag`, which looked right and did
+  // nothing: the official rule is
+  // `html[data-platform=darwin] [data-window-drag]{-webkit-app-region:drag}`, and
+  // both it and the shell's own queries live in the DOCUMENT tree — neither can
+  // see an attribute set inside this shadow root. The draggable strip is a
+  // document-level band owned by client.js instead (HOST_SHEET_CSS,
+  // `body>.dsh550c-dragband`), which is in the tree the rule reaches and declares
+  // `-webkit-app-region: drag` explicitly so Windows drags too.
 
   /* ── the ticking deadline ──────────────────────────────────────────── */
   // T-00:03:41 is a deadline frozen at authoring time. Rewrite it once, at the
