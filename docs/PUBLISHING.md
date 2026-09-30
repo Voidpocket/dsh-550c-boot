@@ -133,6 +133,12 @@ node .verify/publish-npm.mjs 123456     # 账号要 OTP 时带上 6 位码
 所以脚本直调 `npm-cli.js`；账号开了 2FA 时 `npm publish` 会 403 要求 OTP，
 此时要么给 `--otp`，要么用勾了 **Bypass 2FA** 的 Granular Token（npm 正在收紧这类令牌）。
 
+**第三个坑（会吃掉版本号）**：npm 11 的**暂存发布**。一次 PUT 被网络重置后，服务端把那个版本记成
+"staged"：`GET /<pkg>/<version>` 仍是 404，但再发同一个版本会 `E409 Cannot publish over previously
+staged version`，而 `npm stage list` 又查不到它。0.3.0 就这么卡了一轮 —— 之后一次新版本的发布把它
+一并提交上线了。遇到 `E409 ... staged` 时：别反复重试同一个版本号，直接**换版本号**（那次把仓库
+版本改回已上线的 0.3.0 而不是硬推 0.3.1），并去 npm 网页的 Staged versions 面板确认/清理。
+
 ## 4. 版本与升级
 
 - 改动画原稿 → `npm run build` → 提交 `lib/client.js`（CI 会验证同步）

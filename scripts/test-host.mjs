@@ -1,19 +1,23 @@
 /**
- * Host-half tests: the update route handler, the version comparison, and the
- * wiring apply() performs. Pure node — no browser, no DSH — so CI always runs it.
+ * Host-half tests: the npm update check, the update service, the version
+ * comparison, and the wiring apply() performs. Pure node — no browser, no DSH —
+ * so CI always runs it.
  *
- * The handler is module-private on purpose (the plugin exposes one apply()), so the
- * test lifts it out of the built lib/index.js and drives it with fake req/res
- * objects. That keeps the risky part — method guard, upstream failure, the
- * current/outdated decision, the cache — covered without a running profile.
+ * The handlers are module-private on purpose (the plugin exposes one apply()), so
+ * the test lifts them out of the built lib/index.js and drives them with fake
+ * req/res objects and a fake child process. That keeps the risky parts covered
+ * without a running profile: the mirror-first lookup and its fallback, the
+ * desktop-profile refusal, the install argv, and the routes that get registered.
  */
 import { readFileSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const LIB = resolve(here, '../lib/index.js')
 const source = readFileSync(LIB, 'utf8')
+
 const lift = (from, to, name) => {
   const start = source.indexOf(from)
   const end = source.indexOf(to, start)
@@ -23,24 +27,59 @@ const lift = (from, to, name) => {
   return source.slice(start, end).replaceAll('import.meta.url', 'globalThis.__metaUrl')
 }
 
+/** A child process that reports the exit code the test wants. */
+function fakeSpawn(code, output) {
+  return () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => {}
+    setTimeout(() => {
+      if (output !== '') {
+        child.stdout.emit('data', Buffer.from(output, 'utf8'))
+      }
+      child.emit('close', code)
+    }, 0)
+    return child
+  }
+}
+
 const factory = new Function(
   'fetch',
   'readFileSync',
+  'existsSync',
+  'spawn',
   lift('const VERSION_GLOBAL', 'const FIRST_FRAME_CSS', 'helpers') +
-    '; return { compareVersions: compareVersions, updateHandler: updateHandler, packageVersion: packageVersion }',
+    '; return { compareVersions, updateHandler, applyHandler, latestPublished, profileInfo, installCommand, packageVersion }',
 )
 
-// packageVersion() hands readFileSync a URL object; node resolves it itself, so
-// the stub has to do the same (fileURLToPath decodes the %-escaped path).
 const readFileSyncStub = (path, encoding) =>
   readFileSync(path instanceof URL ? fileURLToPath(path) : String(path), encoding)
-
-// packageVersion() builds `new URL('../package.json', <meta url>)`; the lifted
-// code reads that meta url from globalThis because new Function() has no
-// import.meta of its own.
 globalThis.__metaUrl = import.meta.url
 
-const load = (fetchImpl) => factory(fetchImpl, readFileSyncStub, import.meta.url)
+const load = (fetchImpl, options = {}) =>
+  factory(
+    fetchImpl,
+    readFileSyncStub,
+    options.existsSync ?? (() => true),
+    options.spawn ?? fakeSpawn(0, ''),
+  )
+
+const registryOk = (version) => async (url) => {
+  if (!String(url).startsWith(REGISTRY)) throw new Error(`unexpected url ${String(url)}`)
+  return { ok: true, status: 200, json: async () => ({ version, dist: { tarball: `https://x/${version}.tgz` } }) }
+}
+const REGISTRY = 'https://registry.npmmirror.com'
+const OFFICIAL = 'https://registry.npmjs.org'
+
+/** Answer the mirror and the official registry differently, to prove the order. */
+const bothRegistries = (mirror, official) => async (url) => {
+  const target = String(url).startsWith(REGISTRY) ? mirror : String(url).startsWith(OFFICIAL) ? official : null
+  if (target === null) throw new Error(`unexpected url ${String(url)}`)
+  if (target instanceof Error) throw target
+  return { ok: true, status: 200, json: async () => ({ version: target, dist: { tarball: `https://x/${target}.tgz` } }) }
+}
+
 const fakeResponse = () => {
   const out = { status: null, headers: null, body: null, ended: false }
   return {
@@ -58,10 +97,11 @@ const fakeResponse = () => {
   }
 }
 
-const githubOk = (tag) => async () => ({
-  ok: true,
-  status: 200,
-  json: async () => ({ tag_name: tag, html_url: `https://example.test/${tag}`, published_at: '2026-09-30T00:00:00Z' }),
+const fakeRequest = (method, body = '') => ({
+  method,
+  async *[Symbol.asyncIterator]() {
+    if (body !== '') yield Buffer.from(body, 'utf8')
+  },
 })
 
 let failures = 0
@@ -72,7 +112,7 @@ const check = (label, condition, detail) => {
 
 console.log('version comparison')
 {
-  const { compareVersions } = load(githubOk('v0.0.1'))
+  const { compareVersions } = load(registryOk('0.0.1'))
   for (const [a, b, want] of [
     ['0.2.0', '0.1.4', 1],
     ['0.1.4', '0.2.0', -1],
@@ -89,69 +129,139 @@ console.log('version comparison')
 
 console.log('\npackage version')
 {
-  const { packageVersion } = load(githubOk('v0.0.1'))
-  const version = packageVersion()
-  check('reads the installed package.json', /^\d+\.\d+\.\d+/.test(String(version)), `got ${String(version)}`)
+  const { packageVersion } = load(registryOk('0.0.1'))
+  check('reads the installed package.json', /^\d+\.\d+\.\d+/.test(String(packageVersion())), String(packageVersion()))
 }
 
-console.log('\nroute handler')
+console.log('\nregistry lookup (mirror first)')
 {
-  const { updateHandler } = load(githubOk('v9.9.9'))
-  const { out, res } = fakeResponse()
-  await updateHandler({ method: 'POST' }, res)
-  check('POST is refused with 405', out.status === 405 && out.ended === true, `status ${String(out.status)}`)
+  const { latestPublished } = load(bothRegistries('9.9.9', '8.8.8'))
+  const found = await latestPublished()
+  check('prefers the mirror', found.source === 'npmmirror' && found.latest === '9.9.9', JSON.stringify(found))
 
-  const { updateHandler: handler2 } = load(githubOk('v9.9.9'))
+  const { latestPublished: fallback } = load(bothRegistries(new Error('mirror down'), '8.8.8'))
+  const second = await fallback()
+  check('falls back to the official registry', second.source === 'npmjs' && second.latest === '8.8.8', JSON.stringify(second))
+
+  const { latestPublished: broken } = load(
+    bothRegistries(new Error('mirror down'), new Error('official down')),
+  )
+  let threw = null
+  try {
+    await broken()
+  } catch (error) {
+    threw = error
+  }
+  check('reports both failures', threw !== null && String(threw.message).includes('mirror down') && String(threw.message).includes('official down'))
+
+  let calls = 0
+  const { latestPublished: cached } = load(async (url) => {
+    calls += 1
+    return { ok: true, status: 200, json: async () => ({ version: '9.9.9', dist: {} }) }
+  })
+  await cached()
+  await cached()
+  check('a second press reuses the cache', calls === 1, `upstream calls ${String(calls)}`)
+}
+
+console.log('\nprofile handling')
+{
+  const { profileInfo, installCommand } = load(registryOk('0.0.1'))
+  const before = process.env.DSH_PROFILE
+  process.env.DSH_PROFILE = 'web'
+  const web = profileInfo()
+  check('web profile may be updated by the host', web.canApply === true && web.profile === 'web', JSON.stringify(web))
+  const command = installCommand('web')
+  check('install argv targets the CLI', String(command.args[0]).endsWith('dsh/lib/bin.js'), String(command.args[0]))
+  check('install argv adds the package at latest', command.args.join(' ') === `${command.args[0]} plugin --profile web add dsh-550c-boot@latest`, command.args.join(' '))
+
+  process.env.DSH_PROFILE = 'desktop'
+  const desktop = profileInfo()
+  check('desktop is refused before spawning anything', desktop.canApply === false && desktop.reason === 'desktop-profile', JSON.stringify(desktop))
+
+  delete process.env.DSH_PROFILE
+  const unknown = profileInfo()
+  check('unknown profile is refused', unknown.canApply === false && unknown.reason === 'unknown-profile', JSON.stringify(unknown))
+  if (before === undefined) delete process.env.DSH_PROFILE
+  else process.env.DSH_PROFILE = before
+}
+
+console.log('\nupdate route')
+{
+  const { updateHandler } = load(bothRegistries('9.9.9', '8.8.8'))
+  const refused = fakeResponse()
+  await updateHandler(fakeRequest('POST'), refused.res)
+  check('POST is refused with 405', refused.out.status === 405, `status ${String(refused.out.status)}`)
+
   const probe = fakeResponse()
-  await handler2({ method: 'GET' }, probe.res)
+  await updateHandler(fakeRequest('GET'), probe.res)
   const payload = JSON.parse(String(probe.out.body))
   check('GET answers 200 JSON', probe.out.status === 200 && probe.out.headers['content-type'].includes('json'))
-  check('newer tag -> outdated', payload.state === 'outdated' && payload.latest === '9.9.9', JSON.stringify(payload))
+  check('newer version -> outdated', payload.state === 'outdated' && payload.latest === '9.9.9', JSON.stringify(payload))
+  check('names the source registry', payload.source === 'npmmirror')
   check('reports the running version', typeof payload.current === 'string' && payload.current.length > 0)
-  check('passes the release url through', String(payload.url).includes('9.9.9'))
+  check('points at the npm page', String(payload.url).includes('npmjs.com/package/dsh-550c-boot'))
   check('no-store', probe.out.headers['cache-control'] === 'no-store')
 
-  const { updateHandler: handler3 } = load(githubOk('v0.0.1'))
-  const same = fakeResponse()
-  await handler3({ method: 'GET' }, same.res)
-  check('older tag -> current', JSON.parse(String(same.out.body)).state === 'current')
+  const { updateHandler: same } = load(bothRegistries('0.0.1', '0.0.1'))
+  const answer = fakeResponse()
+  await same(fakeRequest('GET'), answer.res)
+  check('older version -> current', JSON.parse(String(answer.out.body)).state === 'current')
 
-  const { updateHandler: handler4 } = load(async () => ({ ok: false, status: 503, json: async () => ({}) }))
-  const failed = fakeResponse()
-  await handler4({ method: 'GET' }, failed.res)
-  const failedPayload = JSON.parse(String(failed.out.body))
-  check('upstream failure -> unknown + error', failedPayload.state === 'unknown' && String(failedPayload.error).includes('503'))
-
-  const { updateHandler: handler5 } = load(async () => {
-    throw new Error('network down')
-  })
-  const thrown = fakeResponse()
-  await handler5({ method: 'GET' }, thrown.res)
-  check('thrown fetch -> unknown + error', JSON.parse(String(thrown.out.body)).state === 'unknown')
-
-  // cache: one upstream call serves repeated presses
-  let calls = 0
-  const { updateHandler: handler6 } = load(async () => {
-    calls += 1
-    return { ok: true, status: 200, json: async () => ({ tag_name: 'v9.9.9', html_url: 'u', published_at: 'p' }) }
-  })
-  await handler6({ method: 'GET' }, fakeResponse().res)
-  await handler6({ method: 'GET' }, fakeResponse().res)
-  check('second press reuses the cache', calls === 1, `upstream calls ${String(calls)}`)
+  const { updateHandler: unknown } = load(bothRegistries(new Error('x'), new Error('y')))
+  const down = fakeResponse()
+  await unknown(fakeRequest('GET'), down.res)
+  const downPayload = JSON.parse(String(down.out.body))
+  check('both registries down -> unknown + error', downPayload.state === 'unknown' && String(downPayload.error).includes('x'))
 }
 
-console.log(failures === 0 ? '\nall route cases pass' : `\n${String(failures)} FAILURES`)
+console.log('\nupdate service')
+{
+  const before = process.env.DSH_PROFILE
+  process.env.DSH_PROFILE = 'desktop'
+  const { applyHandler } = load(registryOk('0.0.1'), { spawn: fakeSpawn(0, 'should not run') })
+  const desktop = fakeResponse()
+  await applyHandler(fakeRequest('POST'), desktop.res)
+  const desktopPayload = JSON.parse(String(desktop.out.body))
+  check('desktop is refused with 409', desktop.out.status === 409 && desktopPayload.ok === false, `status ${String(desktop.out.status)}`)
+  check('the refusal explains the in-app route', String(desktopPayload.hint).includes('设置 → 插件'), String(desktopPayload.hint))
+  check('nothing was spawned', desktopPayload.output === undefined)
 
-// ── the plugin's own wiring ────────────────────────────────────────────────
-// apply() is the only exported behaviour, so drive it with a fake cordis context:
-// what matters is that the index table gains the three rows (and the version
-// global), and that the update route is registered with the right shape.
+  process.env.DSH_PROFILE = 'web'
+  const { applyHandler: allowed } = load(registryOk('0.0.1'), { spawn: fakeSpawn(0, 'added 1 package') })
+  const ok = fakeResponse()
+  await allowed(fakeRequest('POST'), ok.res)
+  const okPayload = JSON.parse(String(ok.out.body))
+  check('allowed profile -> 200 ok', ok.out.status === 200 && okPayload.ok === true, JSON.stringify(okPayload))
+  check('the CLI output is passed through', String(okPayload.output).includes('added 1 package'), String(okPayload.output))
+  check('restart is required', okPayload.restart === true)
+  check('the version comes from the cached lookup', typeof okPayload.version === 'string', String(okPayload.version))
+
+  const { applyHandler: failed } = load(registryOk('0.0.1'), { spawn: fakeSpawn(1, 'ERR_PNPM_NO_MATCHING_VERSION') })
+  const bad = fakeResponse()
+  await failed(fakeRequest('POST'), bad.res)
+  const badPayload = JSON.parse(String(bad.out.body))
+  check('a failing install -> 500 with the output', bad.out.status === 500 && String(badPayload.output).includes('ERR_PNPM'), JSON.stringify(badPayload.output).slice(0, 80))
+
+  const { applyHandler: wrongMethod } = load(registryOk('0.0.1'))
+  const method = fakeResponse()
+  await wrongMethod(fakeRequest('GET'), method.res)
+  check('GET is refused with 405', method.out.status === 405)
+
+  const { applyHandler: noCli } = load(registryOk('0.0.1'), { existsSync: () => false })
+  const missing = fakeResponse()
+  await noCli(fakeRequest('POST'), missing.res)
+  check('no CLI -> 409 no-cli', missing.out.status === 409 && JSON.parse(String(missing.out.body)).reason === 'no-cli')
+
+  if (before === undefined) delete process.env.DSH_PROFILE
+  else process.env.DSH_PROFILE = before
+}
+
 console.log('\nplugin wiring')
 {
   const { apply } = await import(pathToFileURL(LIB).href)
   const events = new Map()
-  const registrations = []
-  const effects = []
+  const routes = []
   let injected = null
   const ctx = {
     on(name, handler) {
@@ -161,14 +271,13 @@ console.log('\nplugin wiring')
     inject(deps, callback) {
       injected = deps
       callback({
-        effect(fn, label) {
-          effects.push(label)
-          registrations.push(fn())
+        effect(fn) {
+          const route = fn()
+          if (route !== null && typeof route === 'object' && 'path' in route) routes.push(route)
         },
         webServer: {
           register(route) {
-            registrations.push(route)
-            return () => {}
+            return route
           },
         },
       })
@@ -180,19 +289,20 @@ console.log('\nplugin wiring')
   const injectHandler = events.get('webserver/index-inject')
   check('listens to webserver/index-inject', typeof injectHandler === 'function')
   injectHandler(table)
-  const kinds = table.map((row) => row.kind)
-  check('injects style + script + global', JSON.stringify(kinds) === '["style","script","global"]', JSON.stringify(kinds))
-  const global = table.find((row) => row.kind === 'global')
-  check('global is __dsh550cVersion', global?.name === '__dsh550cVersion', String(global?.name))
-  check('global carries a version', /^\d+\.\d+\.\d+/.test(String(global?.value)), String(global?.value))
+  check('injects style + script + global', table.map((row) => row.kind).join(',') === 'style,script,global', table.map((row) => row.kind).join(','))
+  check('global is __dsh550cVersion', table.find((row) => row.kind === 'global')?.name === '__dsh550cVersion')
+  check('global carries a version', /^\d+\.\d+\.\d+/.test(String(table.find((row) => row.kind === 'global')?.value)))
   check('script row is head-placed', table.find((row) => row.kind === 'script')?.placement === 'head')
   check('cover css mentions the splash background', String(table[0].text).includes('#050403'))
 
   check('injects webServer optionally', JSON.stringify(injected) === '["webServer"]', JSON.stringify(injected))
-  const route = registrations.find((item) => item !== null && typeof item === 'object' && 'path' in item)
-  check('registers an exact route', route?.kind === 'exact' && route?.path === '/dsh-550c-boot/update', JSON.stringify(route?.path))
-  check('route has a handler', typeof route?.handler === 'function')
-  check('effect carries a label', effects.some((label) => String(label).includes('/dsh-550c-boot/update')), JSON.stringify(effects))
+  const paths = routes.map((route) => `${route.kind} ${route.path}`)
+  check(
+    'registers the check and the update route',
+    paths.includes('exact /dsh-550c-boot/update') && paths.includes('exact /dsh-550c-boot/update/apply'),
+    paths.join(', '),
+  )
+  check('both handlers are functions', routes.every((route) => typeof route.handler === 'function'))
 }
 
 console.log(failures === 0 ? '\nall cases pass' : `\n${String(failures)} FAILURES`)

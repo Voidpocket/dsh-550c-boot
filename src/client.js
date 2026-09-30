@@ -38,10 +38,11 @@ const ROW_STYLE_ID = 'dsh-550c-boot-row-style'
 const FIRST_FRAME_GLOBAL = '__dsh550cFirstFrame'
 /** The host half's injected version (see lib/index.js VERSION_GLOBAL). */
 const VERSION_GLOBAL = '__dsh550cVersion'
-/** The host half's update route (see lib/index.js UPDATE_ROUTE). */
+/** The host half's update routes (see lib/index.js UPDATE_ROUTE / APPLY_ROUTE). */
 const UPDATE_ROUTE = '/dsh-550c-boot/update'
+const APPLY_ROUTE = '/dsh-550c-boot/update/apply'
 /** Where the row sends anyone the check cannot help. */
-const RELEASES_URL = 'https://github.com/yannicksong0106/dsh-550c-boot/releases'
+const PACKAGE_URL = 'https://www.npmjs.com/package/dsh-550c-boot'
 /** What to install to get a newer build; works in the in-app box and in the CLI. */
 const INSTALL_SPEC = 'dsh-550c-boot@latest'
 /** The host-document sheet that makes the Desktop caption strip see-through. */
@@ -521,20 +522,25 @@ function SettingsRow() {
 }
 
 /**
- * The version row: what is installed, and whether anything newer exists.
+ * The version row: what is installed, whether anything newer exists, and — when
+ * the host is allowed to do it — the update itself.
  *
  * DSH has no plugin updater of its own (the inventory surface is read-only), so
- * this is the one place a user can ask. The request goes to the HOST half's route
- * (`GET /dsh-550c-boot/update`), not to GitHub: the served document's CSP is
- * restrictive and the host process already owns outbound network access, so one
- * same-origin call keeps the client free of CORS and CSP questions. Nothing is
- * checked until the button is pressed.
+ * this is the one place a user can ask. Both calls go to the HOST half's routes
+ * (`GET /dsh-550c-boot/update`, `POST /dsh-550c-boot/update/apply`), not to the
+ * registry: the served document's CSP is restrictive and the host process already
+ * owns outbound network access, so same-origin calls keep the client free of CORS
+ * and CSP questions. The check reads npm (the host tries the npmmirror mirror
+ * first, then the official registry); the update runs the profile's own package
+ * manager through the DSH CLI, which is the only supported way to change a
+ * profile's plugins. Nothing happens until a button is pressed.
  */
 function VersionRow() {
   const [current] = React.useState(() =>
     typeof window[VERSION_GLOBAL] === 'string' && window[VERSION_GLOBAL] !== '' ? window[VERSION_GLOBAL] : null,
   )
   const [state, setState] = React.useState({ status: 'idle', payload: null, error: null })
+  const [applying, setApplying] = React.useState({ status: 'idle', result: null })
   const [copied, setCopied] = React.useState(false)
 
   React.useEffect(() => {
@@ -543,6 +549,7 @@ function VersionRow() {
 
   const check = React.useCallback(() => {
     setState({ status: 'checking', payload: null, error: null })
+    setApplying({ status: 'idle', result: null })
     setCopied(false)
     let failed = false
     fetch(UPDATE_ROUTE, { headers: { accept: 'application/json' } })
@@ -559,12 +566,20 @@ function VersionRow() {
       })
   }, [])
 
-  const copy = React.useCallback(() => {
+  const apply = React.useCallback(() => {
+    setApplying({ status: 'running', result: null })
+    fetch(APPLY_ROUTE, { method: 'POST', headers: { accept: 'application/json' } })
+      .then((response) => response.json().then((payload) => ({ ok: response.ok, payload: payload })))
+      .then((answer) => setApplying({ status: answer.payload?.ok === true ? 'done' : 'failed', result: answer.payload }))
+      .catch((error) => setApplying({ status: 'failed', result: { hint: String(error?.message ?? error) } }))
+  }, [])
+
+  const copy = React.useCallback((text) => {
     setCopied(false)
     try {
       const clipboard = navigator.clipboard
       if (clipboard !== undefined && typeof clipboard.writeText === 'function') {
-        clipboard.writeText(INSTALL_SPEC).then(
+        clipboard.writeText(text).then(
           () => setCopied(true),
           () => setCopied(false),
         )
@@ -574,8 +589,8 @@ function VersionRow() {
     }
   }, [])
 
-  const openRelease = React.useCallback(() => {
-    const url = state.payload?.url ?? RELEASES_URL
+  const openPackagePage = React.useCallback(() => {
+    const url = state.payload?.url ?? PACKAGE_URL
     try {
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (error) {
@@ -584,39 +599,73 @@ function VersionRow() {
   }, [state.payload])
 
   const payload = state.payload
+  const source = payload?.source === 'npmmirror' ? '国内镜像' : payload?.source === 'npmjs' ? 'npm 官方' : null
   const outdated = state.status === 'done' && payload !== null && payload.state === 'outdated'
+  const canApply = payload?.canApply === true
   let note = null
+
   if (state.status === 'checking') {
     note = React.createElement('div', { className: 'dsh550c-note' }, '正在检查…')
   } else if (state.status === 'failed') {
     note = React.createElement(
       'div',
       { className: 'dsh550c-note bad' },
-      '检查失败（' + state.error + '），可以直接去发布页看。',
-      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+      '检查失败（' + state.error + '），可以直接去 npm 页面看。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openPackagePage }, '打开 npm 页面'),
     )
-  } else if (state.status === 'done' && outdated) {
+  } else if (outdated && applying.status === 'running') {
+    note = React.createElement('div', { className: 'dsh550c-note up' }, '正在更新到 v' + String(payload.latest) + '…（可能要几十秒）')
+  } else if (outdated && applying.status === 'done') {
+    note = React.createElement(
+      'div',
+      { className: 'dsh550c-note up' },
+      '已更新到 ',
+      React.createElement('b', null, 'v' + String(applying.result?.version ?? payload.latest)),
+      ' —— 重启客户端生效。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openPackagePage }, '打开 npm 页面'),
+    )
+  } else if (outdated && applying.status === 'failed') {
+    note = React.createElement(
+      'div',
+      { className: 'dsh550c-note bad' },
+      String(applying.result?.hint ?? '更新失败。'),
+      applying.result?.output === undefined || applying.result.output === ''
+        ? null
+        : React.createElement('div', { className: 'dsh550c-code' }, String(applying.result.output).slice(0, 600)),
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: () => copy(INSTALL_SPEC) }, copied ? '已复制' : '复制包名'),
+    )
+  } else if (outdated) {
+    // Two ways out, chosen by what the host is allowed to do: a one-click install
+    // where the CLI owns the profile, the in-app instruction on the Desktop, whose
+    // profile the Electron application manages exclusively.
     note = React.createElement(
       'div',
       { className: 'dsh550c-note up' },
       '有新版本 ',
       React.createElement('b', null, 'v' + String(payload.latest)),
-      '（当前 v' + String(payload.current ?? current ?? '?') + '）。装法：在 设置 → 插件 的安装框里填 ',
-      React.createElement('span', { className: 'dsh550c-code' }, INSTALL_SPEC),
-      '，或命令行 ',
-      React.createElement('span', { className: 'dsh550c-code' }, 'dsh plugin --profile <profile> add ' + INSTALL_SPEC),
-      '，然后重启。',
-      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: copy }, copied ? '已复制' : '复制包名'),
-      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+      '（当前 v' + String(payload.current ?? current ?? '?') + (source === null ? '' : '，来源 ' + source) + '）。',
+      canApply
+        ? '点「立即更新」由本机 DSH CLI 安装，之后重启客户端。'
+        : React.createElement(
+            'span',
+            null,
+            '桌面客户端独占管理 ',
+            React.createElement('span', { className: 'dsh550c-code' }, String(payload.profile ?? 'desktop')),
+            ' profile：请在 设置 → 插件 里安装 ',
+            React.createElement('span', { className: 'dsh550c-code' }, INSTALL_SPEC),
+            '，然后重启。',
+          ),
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: () => copy(INSTALL_SPEC) }, copied ? '已复制' : '复制包名'),
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openPackagePage }, '打开 npm 页面'),
     )
   } else if (state.status === 'done') {
     note = React.createElement(
       'div',
       { className: 'dsh550c-note' },
       payload !== null && payload.state === 'unknown'
-        ? '暂时问不到最新版本，可以直接去发布页看。'
-        : '已是最新（v' + String(payload?.current ?? current ?? '?') + '）。',
-      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openRelease }, '打开发布页'),
+        ? '暂时问不到最新版本（' + String(payload.error ?? '网络不通') + '），可以直接去 npm 页面看。'
+        : '已是最新（v' + String(payload?.current ?? current ?? '?') + (source === null ? '' : '，来源 ' + source) + '）。',
+      React.createElement('button', { type: 'button', className: 'dsh550c-link', onClick: openPackagePage }, '打开 npm 页面'),
     )
   }
 
@@ -630,9 +679,8 @@ function VersionRow() {
       React.createElement(
         'div',
         { className: 'dsh550c-row-desc' },
-        current === null
-          ? 'DSH 自身没有插件更新入口，这里向本机宿主查询 GitHub 上的最新发布。'
-          : '当前 v' + current + '。DSH 自身没有插件更新入口，这里向本机宿主查询 GitHub 上的最新发布。',
+        (current === null ? '' : '当前 v' + current + '。') +
+          'DSH 自身没有插件更新入口，这里向本机宿主查询 npm 上的最新版本（优先国内镜像）。',
       ),
       note,
     ),
@@ -649,6 +697,18 @@ function VersionRow() {
         },
         state.status === 'checking' ? '检查中…' : '检查更新',
       ),
+      outdated && canApply && applying.status !== 'done'
+        ? React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh550c-preview',
+              disabled: applying.status === 'running',
+              onClick: apply,
+            },
+            applying.status === 'running' ? '更新中…' : '立即更新',
+          )
+        : null,
     ),
   )
 }

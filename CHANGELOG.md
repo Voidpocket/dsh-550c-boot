@@ -2,6 +2,25 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号用 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-30
+
+### 变更
+
+- **「检查更新」改成查 npm，优先国内源**。原来查 GitHub Releases，实测这台机器上 npmmirror
+  **160ms**、registry.npmjs.org **2078ms**（13 倍），所以宿主半边先打 `registry.npmmirror.com`、
+  失败再退官方源，响应里带上来源（`source: npmmirror | npmjs`）让用户知道这份答案从哪来。
+  缓存 5 分钟；两个源都问不到时 `state: unknown` 并附上错误，不假装知道。
+
+### 新增
+
+- **直接提供更新服务**：新增 `POST /dsh-550c-boot/update/apply`，宿主调 DSH CLI 执行
+  `plugin --profile <当前 profile> add dsh-550c-boot@latest`（唯一受支持的改 profile 方式），
+  把 CLI 输出原样回报，并提示重启生效。profile 名从 `DSH_PROFILE` 读。
+- **桌面端走提示词**：`dsh plugin` 硬编码拒绝 `desktop`（`profile.toLowerCase() === "desktop"`，
+  因为 Electron 应用独占管理它），所以 desktop profile 下不显示「立即更新」，而是给出
+  「在 设置 → 插件 里安装 `dsh-550c-boot@latest`，然后重启」+ 复制包名按钮。
+- 清单权限补上 `web:http-route` 与 `network:npm-registry`（此前只声明了 `web:index-inject` 等）。
+
 ## [0.2.0] - 2026-09-30
 
 ### 新增
