@@ -113,18 +113,29 @@ gh repo edit yannicksong0106/dsh-550c-boot \
 | 权限 | `web:index-inject` / `dom:overlay` / `browser:local-storage` / `desktop:titlebar-overlay` | 逐条对应真实行为：注入 index 行、挂遮罩、存偏好、改标题栏 token |
 | 失败隔离 / 热重载 | `dispose: supported`，`activation: restart-profile` | bundle 层是启动时装配的，装完必须重启 DSH（README 已写） |
 
-## 3. npm（可选）
+## 3. npm（已发布）
+
+`dsh-550c-boot@0.2.0` 于 2026-09-30 发布到 npm（`https://www.npmjs.com/package/dsh-550c-boot`），
+发布后 `dsh plugin --profile web add dsh-550c-boot` 就能按包名安装；市场里的"按名安装"走的是这条路，
+dsh-market 社区索引那一条也因此补上了 `npm` 字段。
 
 ```sh
-npm login
-npm publish    # prepublishOnly 会重跑 extract + build + 语法检查
+node .verify/publish-npm.mjs            # 一键发布（脚本在 .verify/，见下）
+node .verify/publish-npm.mjs --check    # 只验身份 + dry run
+node .verify/publish-npm.mjs 123456     # 账号要 OTP 时带上 6 位码
 ```
 
-发布后 `dsh plugin --profile web add dsh-550c-boot` 就能按包名安装；市场里的"按名安装"走的是这条路。
+`publish-npm.mjs` 的约定：凭据优先取环境变量 `NPM_TOKEN`，其次 `F:\项目\salt\npm_token.txt`，
+再退到本机已有的 `npm login` 会话；令牌只写进 `%TEMP%` 下的**临时** npmrc、`finally` 里删除、
+**绝不打印**，不进仓库也不进全局 npm 配置。发布后自动 `npm view` 核对版本与 tarball 完整性。
+
+两个踩过的坑：Node 24 不允许无 shell 直接 spawn `npm.cmd`（EINVAL，会被误判成"未登录"），
+所以脚本直调 `npm-cli.js`；账号开了 2FA 时 `npm publish` 会 403 要求 OTP，
+此时要么给 `--otp`，要么用勾了 **Bypass 2FA** 的 Granular Token（npm 正在收紧这类令牌）。
 
 ## 4. 版本与升级
 
 - 改动画原稿 → `npm run build` → 提交 `lib/client.js`（CI 会验证同步）
-- 发新版：`npm version patch|minor` → push tag → `npm publish` → 若是已收录项目，再开一条 `add-release`
-  投稿（`operation: add-release`，同样钉完整 commit）
+- 发新版：`npm version patch|minor` → push tag → `npm publish`（或 `node .verify/publish-npm.mjs`）
+  → 若是已收录项目，再开一条 `add-release` 投稿（`operation: add-release`，同样钉完整 commit）
 - 官方基线一变，旧的 `current-baseline-passed` 自动过期，需要重新复验 —— 这是 Hub 的规则，不是我们的选择。

@@ -3,6 +3,8 @@
 [中文](README.md) | [English](README.en.md)
 
 [![Stars](https://img.shields.io/github/stars/yannicksong0106/dsh-550c-boot?style=flat-square&logo=github&label=Stars)](https://github.com/yannicksong0106/dsh-550c-boot/stargazers)
+[![npm](https://img.shields.io/npm/v/dsh-550c-boot?style=flat-square&logo=npm&label=npm)](https://www.npmjs.com/package/dsh-550c-boot)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-550c-boot?style=flat-square&label=npm%20downloads)](https://www.npmjs.com/package/dsh-550c-boot)
 [![Downloads](https://img.shields.io/github/downloads/yannicksong0106/dsh-550c-boot/total?style=flat-square&label=Downloads)](https://github.com/yannicksong0106/dsh-550c-boot/releases)
 [![Last commit](https://img.shields.io/github/last-commit/yannicksong0106/dsh-550c-boot?style=flat-square)](https://github.com/yannicksong0106/dsh-550c-boot/commits/main)
 [![License](https://img.shields.io/github/license/yannicksong0106/dsh-550c-boot?style=flat-square)](LICENSE)
@@ -22,7 +24,10 @@
 ## 安装
 
 ```sh
-# 从 GitHub 安装（推荐；仓库带构建产物，无安装期脚本）
+# 从 npm 安装（最省事：免 allowBuilds，市场里也是一条命令）
+dsh plugin --profile web add dsh-550c-boot
+
+# 从 GitHub 安装（仓库带构建产物，无安装期脚本）
 dsh plugin --profile web add github:yannicksong0106/dsh-550c-boot
 
 # 或用预构建 tarball（Release 附件，附件名不带版本号，latest 链接不会随发版失效）
