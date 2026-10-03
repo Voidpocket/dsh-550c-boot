@@ -17,7 +17,6 @@
 动画与 HTML 原稿由 **Voidpocket**（[@Voidpoket](https://github.com/Voidpocket)）提供，插件工程与移植由
 **Ziyang Song**（[@yannicksong0106](https://github.com/yannicksong0106)）完成。详见 [CREDITS.md](CREDITS.md)。
 
-
 ![完整模式：47 节点逐点覆写](docs/preview-full.png)
 
 - 🎬 **两个档位**：简易档 4 秒（logo 书写）/ 完整档 16 秒（覆写全流程），可一键关闭
